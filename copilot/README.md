@@ -2,7 +2,7 @@
 
 Primeira base multimódulo para um copiloto de reunião Windows/Linux. O objetivo final é capturar o áudio recebido, transcrever, identificar perguntas, consultar contexto selecionado e mostrar uma sugestão textual. Você decide o que falar.
 
-**Esta entrega é o núcleo executável com texto simulado. Ainda não é um aplicativo que ouve reuniões.** Não abre microfone, não captura áudio, não chama IA e não altera o comportamento de gravação do Meetily. Não foi criado um fork remoto na sua conta GitHub.
+**Esta entrega é o núcleo executável com texto simulado. Ainda não é um aplicativo que ouve reuniões.** Não abre microfone, não captura áudio, não chama IA e não altera o comportamento de gravação do Meetily. O desenvolvimento está publicado no fork `marquimRcc/meeting-copilot`.
 
 ## Executar agora
 

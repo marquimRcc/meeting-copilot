@@ -37,6 +37,6 @@ cd meeting-copilot
 git checkout -b feature/meeting-copilot a2cb62e827da7ef59f65064c97233efb2313878e
 ```
 
-Copie a pasta `copilot` e o arquivo `.github/workflows/copilot-core.yml` do pacote para essa base. Isso cria uma linha de desenvolvimento local. Ainda não cria um fork na sua conta nem publica código. Não substitua arquivos preexistentes de outro trabalho sem revisar diferenças.
+Copie a pasta `copilot` e o arquivo `.github/workflows/copilot-core.yml` do pacote para essa base. Isso cria uma linha de desenvolvimento local. No fork publicado, esses arquivos já estão incorporados à branch `main`. Não substitua arquivos preexistentes de outro trabalho sem revisar diferenças.
 
 Confirme os arquivos adicionados com `git status --short` e execute os comandos do README na pasta `copilot`.
