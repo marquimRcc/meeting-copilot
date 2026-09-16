@@ -1,0 +1,14 @@
+[
+  {
+    "id": "exemplo-incidentes",
+    "title": "Exemplo fictício — investigação de incidentes Java",
+    "scopes": ["java"],
+    "text": "Este é um exemplo de contexto técnico, não um relato de experiência pessoal.\n\nPara investigar erros em produção, acompanhe o correlationId nos logs dos serviços envolvidos. Compare requisição, resposta e horário para localizar em qual integração a falha começou.\n\nEm processamento assíncrono, verifique retentativas, duplicidades e idempotência. Não assuma a existência de Kafka, DLQ ou compensação sem confirmar o projeto."
+  },
+  {
+    "id": "exemplo-outro-escopo",
+    "title": "Exemplo fictício — outro projeto",
+    "scopes": ["outro-projeto"],
+    "text": "O procedimento de erros deste outro projeto deve ficar fora da busca quando somente java estiver selecionado."
+  }
+]
