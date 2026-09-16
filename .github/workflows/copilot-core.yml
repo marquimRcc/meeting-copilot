@@ -1,0 +1,27 @@
+name: Copilot core
+on:
+  workflow_dispatch:
+  push:
+    paths: ['copilot/**', '.github/workflows/copilot-core.yml']
+  pull_request:
+    paths: ['copilot/**', '.github/workflows/copilot-core.yml']
+permissions:
+  contents: read
+jobs:
+  core:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: copilot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run demo
