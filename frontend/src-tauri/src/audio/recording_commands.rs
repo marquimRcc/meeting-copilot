@@ -186,6 +186,14 @@ fn resolve_mic_or_default<R: Runtime>(
     let requested_specific = requested_name.is_some();
 
     if let Some(name) = requested_name {
+        if name.eq_ignore_ascii_case("none")
+            || name.eq_ignore_ascii_case("disabled")
+            || name.eq_ignore_ascii_case("copilot-system-only")
+        {
+            info!("🎙️ Microphone explicitly disabled (system audio only / copilot mode)");
+            return None;
+        }
+
         match parse_audio_device(name) {
             Ok(device) => {
                 let exists = cpal::default_host()

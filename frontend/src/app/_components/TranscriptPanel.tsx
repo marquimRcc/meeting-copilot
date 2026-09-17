@@ -2,7 +2,7 @@ import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptVie
 import { PermissionWarning } from '@/components/PermissionWarning';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, GlobeIcon } from 'lucide-react';
+import { Copy, GlobeIcon, Sparkles } from 'lucide-react';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useConfig } from '@/contexts/ConfigContext';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
@@ -23,12 +23,16 @@ interface TranscriptPanelProps {
   isProcessingStop: boolean;
   isStopping: boolean;
   showModal: (name: ModalType, message?: string) => void;
+  isCopilotOpen?: boolean;
+  onToggleCopilot?: () => void;
 }
 
 export function TranscriptPanel({
   isProcessingStop,
   isStopping,
-  showModal
+  showModal,
+  isCopilotOpen = false,
+  onToggleCopilot
 }: TranscriptPanelProps) {
   // Contexts
   const { transcripts, transcriptContainerRef, copyTranscript } = useTranscripts();
@@ -57,6 +61,18 @@ export function TranscriptPanel({
           <div className="flex  flex-col space-y-2">
             <div className="flex justify-center  items-center space-x-2">
               <ButtonGroup>
+                {onToggleCopilot && (
+                  <Button
+                    variant={isCopilotOpen ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={onToggleCopilot}
+                    title="Alternar Meeting Copilot (Alt+Q)"
+                    className={isCopilotOpen ? "text-indigo-600 bg-indigo-50 border-indigo-200 font-medium" : ""}
+                  >
+                    <Sparkles className="text-indigo-600 mr-1" size={14} />
+                    <span>Copilot</span>
+                  </Button>
+                )}
                 {transcripts?.length > 0 && (
                   <Button
                     variant="outline"

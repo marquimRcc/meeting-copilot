@@ -330,6 +330,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="default">Default Microphone</SelectItem>
+              <SelectItem value="none">🚫 Nenhum (Apenas Áudio do Sistema / Copiloto)</SelectItem>
               {inputDevices.map((device) => (
                 <SelectItem
                   key={device.name}

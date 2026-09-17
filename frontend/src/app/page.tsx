@@ -18,6 +18,7 @@ import { useRecordingStop } from '@/hooks/useRecordingStop';
 import { useTranscriptRecovery } from '@/hooks/useTranscriptRecovery';
 import { TranscriptRecovery } from '@/components/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
+import { CopilotPanel } from '@/components/Copilot';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
@@ -26,6 +27,7 @@ export default function Home() {
   const [isRecording, setIsRecordingState] = useState(false);
   const [barHeights, setBarHeights] = useState(['58%', '76%', '58%']);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
 
   // Use contexts for state management
   const { meetingTitle } = useTranscripts();
@@ -64,6 +66,17 @@ export default function Home() {
   useEffect(() => {
     // Track page view
     Analytics.trackPageView('home');
+  }, []);
+
+  // Atalho global Alt + Q para abrir o painel do Copilot
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey && (event.key === 'q' || event.key === 'Q')) {
+        setIsCopilotOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Startup recovery check
@@ -211,6 +224,13 @@ export default function Home() {
           isProcessingStop={isProcessingStop}
           isStopping={isStopping}
           showModal={showModal}
+          isCopilotOpen={isCopilotOpen}
+          onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
+        />
+
+        <CopilotPanel
+          isOpen={isCopilotOpen}
+          onClose={() => setIsCopilotOpen(false)}
         />
 
         {/* Recording controls - only show when permissions are granted or already recording and not showing status messages */}

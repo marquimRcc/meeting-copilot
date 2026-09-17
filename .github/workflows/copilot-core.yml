@@ -2,9 +2,9 @@ name: Copilot core
 on:
   workflow_dispatch:
   push:
-    paths: ['copilot/**', '.github/workflows/copilot-core.yml']
+    paths: ['copilot/**', 'frontend/src/copilot/**', 'frontend/src/components/Copilot/**', 'frontend/src/hooks/useMeetingCopilot.ts', '.github/workflows/copilot-core.yml']
   pull_request:
-    paths: ['copilot/**', '.github/workflows/copilot-core.yml']
+    paths: ['copilot/**', 'frontend/src/copilot/**', 'frontend/src/components/Copilot/**', 'frontend/src/hooks/useMeetingCopilot.ts', '.github/workflows/copilot-core.yml']
 permissions:
   contents: read
 jobs:
