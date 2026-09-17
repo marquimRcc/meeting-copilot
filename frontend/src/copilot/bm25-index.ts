@@ -111,10 +111,11 @@ export class BM25Index {
    */
   search(query: string, selectedScopes: readonly string[], limit = 4): EvidenceMatch[] {
     if (!query || !query.trim()) return [];
+    if (!selectedScopes || selectedScopes.length === 0) return [];
     const queryStems = stemmedTokensPt(query);
     if (queryStems.length === 0) return [];
 
-    const isScopeWildcard = selectedScopes.includes('*') || selectedScopes.includes('todos') || selectedScopes.length === 0;
+    const isScopeWildcard = selectedScopes.includes('*') || selectedScopes.includes('todos');
     const scopesSet = new Set(selectedScopes);
 
     const scoredMatches: { passage: IndexedPassage; score: number }[] = [];
