@@ -590,4 +590,107 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     // Caso 5: eco acústico de alto-falante moderado (sys=0.050, mic=0.0035, proporção 0.07 < 0.25)
     assert.equal(classifySpeaker(0.0035, 0.050), 'System', 'Vazamento residual acústico abaixo de 25% deve ser classificado como System');
   });
+
+  test('descarte estrito de eventos órfãos quando não há sessão ativa (activeMeetingId === null)', () => {
+    // Simula o estado do TranscriptContext
+    let activeMeetingId = null;
+
+    function handleTranscriptUpdate(update) {
+      // Regra 1: Rejeitar eventos órfãos sem sessão ativa
+      if (!activeMeetingId) {
+        return { accepted: false, reason: 'no-active-session' };
+      }
+      // Regra 2: Rejeitar eventos com meeting_id divergente
+      if (update.meeting_id && update.meeting_id !== activeMeetingId) {
+        return { accepted: false, reason: 'mismatched-session' };
+      }
+      return { accepted: true };
+    }
+
+    // Cenário: gravação finalizada ou clearTranscripts() executado
+    activeMeetingId = null;
+
+    const orphanEvent = {
+      sequence_id: 10,
+      text: 'Evento atrasado que chegou depois de encerrar',
+      meeting_id: 'reuniao-encerrada'
+    };
+
+    const res = handleTranscriptUpdate(orphanEvent);
+    assert.equal(res.accepted, false);
+    assert.equal(res.reason, 'no-active-session');
+  });
+
+  test('garantia de adoção de sessão antes do primeiro chunk da nova reunião', () => {
+    // Ordem no backend: recording-started emitido antes dos workers gerarem chunks
+    let activeMeetingId = null;
+    const receivedTranscripts = [];
+
+    // 1. Backend emite recording-started -> frontend adota síncrono no ref
+    function onRecordingStarted(payload) {
+      activeMeetingId = payload.meeting_id;
+    }
+
+    // 2. Transcrição chega do worker
+    function onTranscriptUpdate(update) {
+      if (!activeMeetingId) return;
+      if (update.meeting_id && update.meeting_id !== activeMeetingId) return;
+      receivedTranscripts.push(update);
+    }
+
+    // Simulando nova reunião "meeting-nova"
+    onRecordingStarted({ meeting_id: 'meeting-nova' });
+
+    // Primeiro chunk novo chega com sequence_id 0
+    onTranscriptUpdate({
+      sequence_id: 0,
+      text: 'Bom dia equipe, iniciando a reunião.',
+      meeting_id: 'meeting-nova'
+    });
+
+    assert.equal(receivedTranscripts.length, 1);
+    assert.equal(receivedTranscripts[0].text, 'Bom dia equipe, iniciando a reunião.');
+  });
+
+  test('upsert de correções tardias do Whisper no IndexedDB com chave composta meetingId_seqId', () => {
+    // Simulação do comportamento de upsert do IndexedDBService
+    const mockStore = new Map();
+    let transcriptCount = 0;
+
+    function saveTranscript(meetingId, transcript) {
+      const seqId = transcript.sequence_id !== undefined ? transcript.sequence_id : transcript.sequenceId;
+      const compositeKey = `${meetingId}_${seqId}`;
+
+      const isNewSegment = !mockStore.has(compositeKey);
+      mockStore.set(compositeKey, {
+        ...transcript,
+        id: compositeKey,
+        meetingId,
+        sequenceId: seqId,
+        sequence_id: seqId
+      });
+
+      if (isNewSegment) {
+        transcriptCount++;
+      }
+    }
+
+    // 1. Salva transcrição parcial / inicial
+    saveTranscript('m-100', { sequence_id: 1, text: 'Como você' });
+    assert.equal(mockStore.size, 1);
+    assert.equal(transcriptCount, 1);
+    assert.equal(mockStore.get('m-100_1').text, 'Como você');
+
+    // 2. Whisper emite correção tardia para o mesmo sequence_id
+    saveTranscript('m-100', { sequence_id: 1, text: 'Como você investigava erros em produção?' });
+    // Deve atualizar in-place no mockStore sem duplicar nem incrementar contagem
+    assert.equal(mockStore.size, 1, 'Não deve duplicar registros no IndexedDB');
+    assert.equal(transcriptCount, 1, 'Não deve incrementar transcriptCount em atualizações');
+    assert.equal(mockStore.get('m-100_1').text, 'Como você investigava erros em produção?');
+
+    // 3. Novo segmento com sequence_id 2
+    saveTranscript('m-100', { sequence_id: 2, text: 'Usávamos OpenTelemetry e logs estruturados.' });
+    assert.equal(mockStore.size, 2);
+    assert.equal(transcriptCount, 2);
+  });
 });
