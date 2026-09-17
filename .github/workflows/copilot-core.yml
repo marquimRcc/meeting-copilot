@@ -54,6 +54,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+      - name: Prepare Tauri sidecar placeholder
+        shell: bash
+        run: |
+          mkdir -p frontend/src-tauri/binaries
+          touch frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
       - name: Cargo Check
         run: cargo check --manifest-path frontend/src-tauri/Cargo.toml
       - name: Cargo Test (Compile Only)
