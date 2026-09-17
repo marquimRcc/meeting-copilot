@@ -88,6 +88,12 @@ describe('Parte 1: Mecanismo de Busca BM25', () => {
     const matches = index.search('correlationId', ['todos']);
     assert.equal(matches[0].documentId, 'doc-incidentes');
   });
+
+  test('escopo vazio não retorna nenhuma evidência (isolamento e confidencialidade estrita)', () => {
+    const index = new BM25Index(sampleDocs);
+    const matches = index.search('Como investigar erros em produção?', []);
+    assert.equal(matches.length, 0, 'Escopo vazio deve retornar 0 evidências');
+  });
 });
 
 describe('Parte 1: Detector de Perguntas Conversacionais', () => {
@@ -197,6 +203,25 @@ describe('Parte 1: TranscriptBuffer de Alta Performance', () => {
     assert.equal(update.isNew, false);
     assert.equal(update.isQuestionEligible, true);
     assert.equal(buffer.snapshot()[0].text, 'Como você investigava erros em produção?');
+  });
+
+  test('clear() reseta segmentos, IDs ordenados e marca dágua entre reuniões', () => {
+    const buffer = new TranscriptBuffer('s1', 120000, 50);
+    buffer.append({
+      id: '1', sessionId: 's1', sequence: 1, startMs: 0, endMs: 2000,
+      text: 'Primeira fala', final: true, channel: 'remote-system'
+    });
+    assert.equal(buffer.snapshot().length, 1);
+    buffer.clear();
+    assert.equal(buffer.snapshot().length, 0);
+
+    // Nova reunião iniciando do tempo 0 deve ser aceita normalmente
+    const novaReuniao = buffer.append({
+      id: 'nova-1', sessionId: 's2', sequence: 1, startMs: 0, endMs: 1500,
+      text: 'Início da nova reunião', final: true, channel: 'remote-system'
+    });
+    assert.equal(novaReuniao.isNew, true);
+    assert.equal(buffer.snapshot().length, 1);
   });
 });
 

@@ -89,7 +89,7 @@ export default function CopilotOverlayPage() {
     const filtered = scopes.filter(s => s !== 'todos');
     if (filtered.includes(scope)) {
       const next = filtered.filter(s => s !== scope);
-      setScopes(next.length === 0 ? ['todos'] : next);
+      setScopes(next);
     } else {
       setScopes([...filtered, scope]);
     }

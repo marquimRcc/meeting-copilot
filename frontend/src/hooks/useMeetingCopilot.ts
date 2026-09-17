@@ -31,7 +31,7 @@ export interface UseMeetingCopilotReturn {
 
 export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const { transcripts } = useTranscripts();
-  const { modelConfig } = useConfig();
+  const { modelConfig, providerApiKeys, selectedDevices } = useConfig();
 
   const [currentQuestion, setCurrentQuestion] = useState<CopilotQuestion | null>(null);
   const [evidence, setEvidence] = useState<EvidenceMatch[]>([]);
@@ -59,40 +59,48 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const getCopilotConfig = useCallback((): CopilotConfig => {
     const rawProvider = modelConfig.provider || 'ollama';
     let provider: CopilotConfig['provider'] = 'ollama';
-    let endpoint = modelConfig.ollamaEndpoint || undefined;
+    let endpoint: string | undefined;
     let model = modelConfig.model || '';
+    let apiKey: string | undefined;
 
     if (rawProvider === 'ollama') {
       provider = 'ollama';
-      endpoint = endpoint || 'http://127.0.0.1:11434';
+      endpoint = modelConfig.ollamaEndpoint || 'http://127.0.0.1:11434';
       model = model || 'llama3.2';
-    } else if (rawProvider === 'custom-openai' || (endpoint && endpoint.includes('1234'))) {
+    } else if (rawProvider === 'custom-openai') {
       provider = 'custom-openai';
-      endpoint = endpoint || 'http://127.0.0.1:1234/v1';
-      model = model || 'qwen2.5-coder-14b-instruct';
+      endpoint = modelConfig.customOpenAIEndpoint || 'http://127.0.0.1:1234/v1';
+      model = modelConfig.customOpenAIModel || model || 'qwen2.5-coder-14b-instruct';
+      apiKey = modelConfig.customOpenAIApiKey || undefined;
     } else if (rawProvider === 'groq') {
       provider = 'openai';
       endpoint = 'https://api.groq.com/openai/v1';
       model = model || 'llama-3.3-70b-versatile';
+      apiKey = providerApiKeys?.groq || modelConfig.apiKey || undefined;
     } else if (rawProvider === 'openrouter') {
       provider = 'openai';
       endpoint = 'https://openrouter.ai/api/v1';
       model = model || 'meta-llama/llama-3.3-70b-instruct';
-    } else {
+      apiKey = providerApiKeys?.openrouter || modelConfig.apiKey || undefined;
+    } else if (rawProvider === 'openai') {
       provider = 'openai';
-      endpoint = endpoint || 'https://api.openai.com/v1';
+      endpoint = 'https://api.openai.com/v1';
       model = model || 'gpt-4o-mini';
+      apiKey = providerApiKeys?.openai || modelConfig.apiKey || undefined;
+    } else {
+      // Provedores não compatíveis diretamente com streaming chat/completions (claude, builtin-ai, etc.)
+      throw new Error(`O provedor "${rawProvider}" não suporta streaming direto do Copiloto. Selecione OpenAI, Groq, OpenRouter ou LM Studio (Custom OpenAI) nas configurações.`);
     }
 
     return {
       provider,
       endpoint,
       model,
-      apiKey: modelConfig.apiKey || undefined,
+      apiKey,
       scopes: scopesRef.current,
       autoTrigger: isAutoTriggerRef.current
     };
-  }, [modelConfig]);
+  }, [modelConfig, providerApiKeys]);
 
   // Execução da busca e geração para uma pergunta
   const executeCopilotSuggestion = useCallback(async (questionText: string, questionObj: CopilotQuestion) => {
@@ -158,10 +166,26 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
 
   // Processamento automático de novas falas
   useEffect(() => {
-    if (!transcripts || transcripts.length === 0) return;
+    // Quando a lista de transcrições é limpa (fim da reunião ou início de uma nova)
+    if (!transcripts || transcripts.length === 0) {
+      assistantRef.current.cancel();
+      bufferRef.current.clear();
+      detectorRef.current.clear();
+      setIsGenerating(false);
+      setStreamingAnswer('');
+      setCurrentQuestion(null);
+      setEvidence([]);
+      return;
+    }
 
     const last = transcripts[transcripts.length - 1];
     if (!last || last.is_partial) return;
+
+    // Atribuição de canal de áudio:
+    // Se o microfone foi desativado explicitamente ('none'), a captura contém exclusivamente loopback do sistema (outros participantes).
+    // Se o microfone estiver ativo, a fala pode ser do próprio usuário (canal 'unknown' para evitar que o usuário pergunte e o copiloto responda a ele mesmo no modo automático).
+    const isLoopbackOnly = selectedDevices?.micDevice === 'none';
+    const channel: CopilotSegment['channel'] = isLoopbackOnly ? 'remote-system' : 'unknown';
 
     const segment: CopilotSegment = {
       id: last.id || String(last.sequence_id),
@@ -171,18 +195,19 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       endMs: Math.round((last.audio_end_time ?? (last.audio_start_time ?? 0) + 3) * 1000),
       text: last.text,
       final: !last.is_partial,
-      channel: 'remote-system'
+      channel
     };
 
     const { isQuestionEligible } = bufferRef.current.append(segment);
 
-    if (isAutoTriggerRef.current && isQuestionEligible) {
+    // O gatilho automático dispara APENAS se for canal 'remote-system' (áudio remoto)
+    if (isAutoTriggerRef.current && isQuestionEligible && channel === 'remote-system') {
       const detected = detectorRef.current.detect(segment);
       if (detected) {
         executeCopilotSuggestion(detected.text, detected);
       }
     }
-  }, [transcripts, executeCopilotSuggestion]);
+  }, [transcripts, selectedDevices, executeCopilotSuggestion]);
 
   // Disparo manual (sob demanda)
   const triggerManual = useCallback(async (customText?: string) => {

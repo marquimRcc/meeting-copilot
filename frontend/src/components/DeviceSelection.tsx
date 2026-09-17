@@ -103,6 +103,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
     // enumeration doesn't wipe a valid selection.
     if (
       selectedDevices.micDevice &&
+      selectedDevices.micDevice !== 'none' &&
       inputs.length > 0 &&
       !inputs.some(d => `${d.name} (input)` === selectedDevices.micDevice)
     ) {
