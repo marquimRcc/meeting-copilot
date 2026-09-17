@@ -321,6 +321,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             duration: update.duration,
             source: update.source,
             speaker,
+            meeting_id: currentMeetingId || undefined,
           };
 
           // Add to buffer
@@ -393,6 +394,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             speaker: segment.source === 'Microphone'
               ? 'Você'
               : (segment.source === 'System Audio' ? 'Participante' : undefined),
+            meeting_id: currentMeetingId || undefined,
           }));
 
           setTranscripts(formattedTranscripts);
@@ -434,6 +436,11 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       audio_start_time: update.audio_start_time,
       audio_end_time: update.audio_end_time,
       duration: update.duration,
+      source: update.source,
+      speaker: update.source === 'Microphone'
+        ? 'Você'
+        : (update.source === 'System Audio' ? 'Participante' : undefined),
+      meeting_id: currentMeetingId || undefined,
     };
 
     setTranscripts(prev => {

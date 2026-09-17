@@ -7,7 +7,7 @@ export class TranscriptBuffer {
   private segments = new Map<string, CopilotSegment>();
   private orderedIds: string[] = [];
   private watermarkMs = 0;
-  readonly sessionId: string;
+  sessionId: string;
   readonly windowMs: number;
   readonly maxSegments: number;
 
@@ -27,6 +27,13 @@ export class TranscriptBuffer {
     }
 
     if (segment.channel !== 'remote-system' || !segment.final) {
+      return { isNew: false, isQuestionEligible: false };
+    }
+
+    // Validação estrita de isolamento de sessão:
+    if (!this.sessionId && segment.sessionId) {
+      this.sessionId = segment.sessionId;
+    } else if (segment.sessionId && this.sessionId && segment.sessionId !== this.sessionId) {
       return { isNew: false, isQuestionEligible: false };
     }
 
@@ -83,9 +90,10 @@ export class TranscriptBuffer {
     }
   }
 
-  clear(): void {
+  clear(newSessionId?: string): void {
     this.segments.clear();
     this.orderedIds = [];
     this.watermarkMs = 0;
+    this.sessionId = newSessionId || '';
   }
 }

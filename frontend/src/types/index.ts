@@ -18,6 +18,7 @@ export interface Transcript {
   duration?: number;          // Segment duration in seconds (e.g., 3.3)
   source?: string;           // "Microphone" or "System Audio"
   speaker?: string;          // "Você" or "Participante"
+  meeting_id?: string;
 }
 
 export interface TranscriptUpdate {
