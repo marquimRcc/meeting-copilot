@@ -16,12 +16,13 @@ export interface MeetingMetadata {
 }
 
 export interface StoredTranscript {
-  id?: number;                // Auto-increment primary key
+  id?: number | string;       // Auto-increment number or composite string key: "${meetingId}_${sequenceId}"
   meetingId: string;          // Foreign key to meetings store
   text: string;               // Transcript text
   timestamp: string;          // ISO 8601 timestamp
   confidence: number;         // Whisper confidence score
   sequenceId: number;         // Sequence number for ordering
+  sequence_id?: number;       // Sequence number alias from TranscriptUpdate
   storedAt: number;           // Unix timestamp when saved
   audio_start_time?: number;  // Recording-relative start time in seconds
   audio_end_time?: number;    // Recording-relative end time in seconds
@@ -225,15 +226,21 @@ class IndexedDBService {
   // Transcript operations
 
   /**
-   * Save a transcript segment
+   * Save a transcript segment with upsert behavior to prevent duplicate Whisper late updates
    */
   async saveTranscript(meetingId: string, transcript: any): Promise<void> {
     try {
       if (!this.db) await this.init();
 
+      const seqId = transcript.sequence_id !== undefined ? transcript.sequence_id : transcript.sequenceId;
+      const compositeKey = seqId !== undefined ? `${meetingId}_${seqId}` : `${meetingId}_${Date.now()}`;
+
       const storedTranscript: StoredTranscript = {
         ...transcript,
+        id: compositeKey,
         meetingId,
+        sequenceId: seqId !== undefined ? seqId : 0,
+        sequence_id: seqId,
         storedAt: Date.now()
       };
 
@@ -241,27 +248,38 @@ class IndexedDBService {
       const transcriptsStore = transaction.objectStore('transcripts');
       const meetingsStore = transaction.objectStore('meetings');
 
-      // Save transcript
+      // Check if this segment already exists to distinguish new segments from Whisper late updates
+      const existingSegment = await new Promise<StoredTranscript | null>((resolve) => {
+        const request = transcriptsStore.get(compositeKey);
+        request.onsuccess = () => resolve((request.result as StoredTranscript) || null);
+        request.onerror = () => resolve(null);
+      });
+
+      const isNewSegment = !existingSegment;
+
+      // Upsert transcript segment with stable composite key
       await new Promise<void>((resolve, reject) => {
-        const request = transcriptsStore.add(storedTranscript);
+        const request = transcriptsStore.put(storedTranscript);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
       });
 
-      // Update meeting metadata
-      const meeting = await new Promise<MeetingMetadata | null>((resolve, reject) => {
+      // Update meeting metadata (only increment count for truly new segments)
+      const meeting = await new Promise<MeetingMetadata | null>((resolve) => {
         const request = meetingsStore.get(meetingId);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve((request.result as MeetingMetadata) || null);
+        request.onerror = () => resolve(null);
       });
 
       if (meeting) {
         meeting.lastUpdated = Date.now();
-        meeting.transcriptCount += 1;
-        await new Promise<void>((resolve, reject) => {
+        if (isNewSegment) {
+          meeting.transcriptCount = (meeting.transcriptCount || 0) + 1;
+        }
+        await new Promise<void>((resolve) => {
           const request = meetingsStore.put(meeting);
           request.onsuccess = () => resolve();
-          request.onerror = () => reject(request.error);
+          request.onerror = () => resolve();
         });
       }
     } catch (error) {
@@ -285,8 +303,12 @@ class IndexedDBService {
         const request = index.getAll(meetingId);
         request.onsuccess = () => {
           const transcripts = request.result as StoredTranscript[];
-          // Sort by sequence ID
-          transcripts.sort((a, b) => a.sequenceId - b.sequenceId);
+          // Sort by sequence ID (supporting both sequence_id and sequenceId)
+          transcripts.sort((a, b) => {
+            const seqA = a.sequence_id !== undefined ? a.sequence_id : a.sequenceId;
+            const seqB = b.sequence_id !== undefined ? b.sequence_id : b.sequenceId;
+            return (seqA || 0) - (seqB || 0);
+          });
           resolve(transcripts);
         };
         request.onerror = () => reject(request.error);

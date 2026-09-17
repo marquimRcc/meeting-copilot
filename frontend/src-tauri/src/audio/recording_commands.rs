@@ -436,13 +436,6 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     finalize_recording_start();
     drop(engine_lifecycle_guard);
 
-    // Start optimized parallel transcription task and store handle
-    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver, Some(meeting_id.clone()));
-    {
-        let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
-        *global_task = Some(task_handle);
-    }
-
     // CRITICAL: Listen for transcript-update events and save to recording manager
     // This enables transcript history persistence for page reload sync
     // Store listener ID for cleanup during stop_recording to ensure microphone is released
@@ -484,7 +477,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         info!("✅ Transcript-update event listener registered for history persistence");
     }
 
-    // Emit success event
+    // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started successfully with parallel processing",
         "devices": ["Default Microphone", "Default System Audio"],
@@ -495,6 +488,13 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
 
     // Update tray menu to reflect recording state
     crate::tray::update_tray_menu(&app);
+
+    // Start optimized parallel transcription task and store handle AFTER recording-started is emitted
+    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver, Some(meeting_id.clone()));
+    {
+        let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
+        *global_task = Some(task_handle);
+    }
 
     info!("✅ Recording started successfully with async-first approach");
 
@@ -634,13 +634,6 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     finalize_recording_start();
     drop(engine_lifecycle_guard);
 
-    // Start optimized parallel transcription task and store handle
-    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver, Some(meeting_id.clone()));
-    {
-        let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
-        *global_task = Some(task_handle);
-    }
-
     // CRITICAL: Listen for transcript-update events and save to recording manager
     // This enables transcript history persistence for page reload sync
     // Store listener ID for cleanup during stop_recording to ensure microphone is released
@@ -682,7 +675,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         info!("✅ Transcript-update event listener registered for history persistence");
     }
 
-    // Emit success event
+    // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started with custom devices and parallel processing",
         "devices": [
@@ -696,6 +689,13 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
 
     // Update tray menu to reflect recording state
     crate::tray::update_tray_menu(&app);
+
+    // Start optimized parallel transcription task and store handle AFTER recording-started is emitted
+    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver, Some(meeting_id.clone()));
+    {
+        let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
+        *global_task = Some(task_handle);
+    }
 
     info!("✅ Recording started with custom devices using async-first approach");
 

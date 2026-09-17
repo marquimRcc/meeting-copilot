@@ -32,11 +32,18 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
   // Recording state context - provides backend-synced state
   const recordingState = useRecordingState();
 
-  // Refs for transcript management
+  // Refs for transcript management and strict session isolation
+  const activeMeetingIdRef = useRef<string | null>(null);
+  const isRecordingActiveRef = useRef<boolean>(false);
   const transcriptsRef = useRef<Transcript[]>(transcripts);
   const isUserAtBottomRef = useRef<boolean>(true);
   const transcriptContainerRef = useRef<HTMLDivElement>(null);
   const finalFlushRef = useRef<(() => void) | null>(null);
+
+  // Keep activeMeetingIdRef in sync with currentMeetingId
+  useEffect(() => {
+    activeMeetingIdRef.current = currentMeetingId;
+  }, [currentMeetingId]);
 
   // Keep ref updated with current transcripts
   useEffect(() => {
@@ -94,8 +101,10 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
         // Listen for recording-started event
         unlistenRecordingStarted = await recordingService.onRecordingStarted(async (payload) => {
           try {
-            // Adopt meeting ID from backend payload or fallback to generated ID
+            // Adopt meeting ID from backend payload synchronously in ref and state
             const meetingId = payload?.meeting_id || `meeting-${Date.now()}`;
+            activeMeetingIdRef.current = meetingId;
+            isRecordingActiveRef.current = true;
             setCurrentMeetingId(meetingId);
 
             // Store in sessionStorage as fallback for markMeetingAsSaved
@@ -143,9 +152,13 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
         // Listen for recording-stopped event
         unlistenRecordingStopped = await recordingService.onRecordingStopped(async (payload) => {
           try {
-            if (currentMeetingId) {
+            const stoppedMeetingId = activeMeetingIdRef.current || currentMeetingId;
+            isRecordingActiveRef.current = false;
+            activeMeetingIdRef.current = null;
+
+            if (stoppedMeetingId) {
               // Update folder path in IndexedDB
-              const metadata = await indexedDBService.getMeetingMetadata(currentMeetingId);
+              const metadata = await indexedDBService.getMeetingMetadata(stoppedMeetingId);
 
               if (metadata && payload.folder_path) {
                 metadata.folderPath = payload.folder_path;
@@ -173,7 +186,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
         console.log('🧹 Recording stopped listener cleaned up');
       }
     };
-  }, [currentMeetingId]);
+  }, []); // Run once on mount to maintain continuous IPC listener
 
   // Main transcript buffering logic with sequence_id ordering
   useEffect(() => {
@@ -316,9 +329,16 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             buffer_size_before: transcriptBuffer.size
           });
 
-          // Session isolation: drop updates from previous or different meetings
-          if (update.meeting_id && currentMeetingId && update.meeting_id !== currentMeetingId) {
-            console.log('🚫 MAIN LISTENER: Dropping transcript update from different meeting:', update.meeting_id, 'expected:', currentMeetingId);
+          // Session isolation:
+          // 1. Reject orphan events when there is no active recording session
+          if (!activeMeetingIdRef.current) {
+            console.log('🚫 MAIN LISTENER: Dropping transcript update - no active recording session');
+            return;
+          }
+
+          // 2. Reject updates from previous or different meetings
+          if (update.meeting_id && update.meeting_id !== activeMeetingIdRef.current) {
+            console.log('🚫 MAIN LISTENER: Dropping transcript update from different meeting:', update.meeting_id, 'expected:', activeMeetingIdRef.current);
             return;
           }
 
@@ -354,7 +374,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             duration: update.duration,
             source: update.source,
             speaker,
-            meeting_id: update.meeting_id || currentMeetingId || undefined,
+            meeting_id: update.meeting_id || activeMeetingIdRef.current || undefined,
           };
           (newTranscript as any)._receivedAt = now;
 
@@ -362,9 +382,9 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
           transcriptBuffer.set(update.sequence_id, newTranscript);
           console.log(`✅ MAIN LISTENER: Buffered transcript with sequence_id ${update.sequence_id}. Buffer size: ${transcriptBuffer.size}, Last processed: ${lastProcessedSequence}`);
 
-          // Save to IndexedDB (non-blocking)
-          if (currentMeetingId) {
-            indexedDBService.saveTranscript(currentMeetingId, update)
+          // Save to IndexedDB (non-blocking) with active session ID
+          if (activeMeetingIdRef.current) {
+            indexedDBService.saveTranscript(activeMeetingIdRef.current, update)
               .catch(err => console.warn('IndexedDB save failed:', err));
           }
 
@@ -397,7 +417,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
         console.log('🧹 CLEANUP: MAIN transcript listener cleaned up');
       }
     };
-  }, [currentMeetingId]); // Add currentMeetingId dependency
+  }, []); // Run once on mount to keep IPC listener uninterrupted across meetings
 
   // Sync transcript history and meeting name from backend on reload
   // This fixes the issue where reloading during active recording causes state desync
@@ -459,6 +479,17 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       is_partial: update.is_partial
     });
 
+    const activeId = activeMeetingIdRef.current || currentMeetingId;
+    if (!activeId) {
+      console.log('🚫 addTranscript: Dropping transcript update - no active session');
+      return;
+    }
+
+    if (update.meeting_id && update.meeting_id !== activeId) {
+      console.log('🚫 addTranscript: Dropping transcript update from different meeting');
+      return;
+    }
+
     const newTranscript: Transcript = {
       id: update.sequence_id ? `seq_${update.sequence_id}` : Date.now().toString(),
       text: update.text,
@@ -474,7 +505,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       speaker: update.source === 'Microphone'
         ? 'Você'
         : (update.source === 'System Audio' ? 'Participante' : undefined),
-      meeting_id: update.meeting_id || currentMeetingId || undefined,
+      meeting_id: update.meeting_id || activeId || undefined,
     };
 
     setTranscripts(prev => {
@@ -525,16 +556,20 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Clear transcripts (used when starting new recording)
+  // Clear transcripts (used when starting new recording or explicitly clearing session)
   const clearTranscripts = useCallback(() => {
     setTranscripts([]);
-    // Don't clear currentMeetingId here - it will be set by recording-started event
+    activeMeetingIdRef.current = null;
+    isRecordingActiveRef.current = false;
+    setCurrentMeetingId(null);
+    sessionStorage.removeItem('indexeddb_current_meeting_id');
+    console.log('🧹 Transcripts and active meeting session cleared');
   }, []);
 
   // Mark current meeting as saved in IndexedDB
   const markMeetingAsSaved = useCallback(async () => {
-    // Try context state first, fallback to sessionStorage
-    const meetingId = currentMeetingId || sessionStorage.getItem('indexeddb_current_meeting_id');
+    // Try active session first, fallback to context state and sessionStorage
+    const meetingId = activeMeetingIdRef.current || currentMeetingId || sessionStorage.getItem('indexeddb_current_meeting_id');
 
     if (!meetingId) {
       console.error('[IndexedDB] ❌ Cannot mark meeting as saved: No meeting ID available!');
@@ -546,7 +581,9 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     try {
       await indexedDBService.markMeetingSaved(meetingId);
 
-      // Clear both sources
+      // Clear all sources
+      activeMeetingIdRef.current = null;
+      isRecordingActiveRef.current = false;
       setCurrentMeetingId(null);
       sessionStorage.removeItem('indexeddb_current_meeting_id');
     } catch (error) {
