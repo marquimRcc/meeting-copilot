@@ -820,7 +820,8 @@ impl AudioPipeline {
         if count == 0 {
             // Fallback: check recent window energy if available
             if let Some(last) = self.energy_history.back() {
-                if last.mic_rms > 0.008 || (last.mic_rms > 0.003 && last.mic_rms > last.sys_rms * 0.15) {
+                let is_bleed = last.sys_rms > 0.005 && last.mic_rms < (last.sys_rms * 0.25);
+                if !is_bleed && (last.mic_rms > 0.004 && (last.sys_rms <= 0.005 || last.mic_rms > last.sys_rms * 0.25)) {
                     return DeviceType::Microphone;
                 }
             }
@@ -830,15 +831,20 @@ impl AudioPipeline {
         let avg_mic_rms = total_mic_rms / count as f32;
         let avg_sys_rms = total_sys_rms / count as f32;
 
-        let detected = if avg_mic_rms > 0.008 {
-            // Unambiguous local microphone speech (user speaking clearly):
-            // Prioritize Microphone so user speech is NEVER misattributed as remote participant
-            DeviceType::Microphone
-        } else if avg_mic_rms > 0.003 && avg_mic_rms > avg_sys_rms * 0.15 {
-            // Active microphone speech (including moderate cross-talk above acoustic bleed):
+        // Acoustic bleed detection:
+        // Sound from laptop speakers leaking into laptop mic is typically ~10-20% of sys_rms.
+        // If sys is active (>0.005) and mic is < 25% of sys, it is classified as acoustic bleed (System).
+        let is_acoustic_bleed = avg_sys_rms > 0.005 && avg_mic_rms < (avg_sys_rms * 0.25);
+
+        let detected = if is_acoustic_bleed {
+            // Even if mic_rms has energy from high speaker volume (e.g., mic=0.010 when sys=0.100),
+            // it is acoustic coupling from loud speakers into the mic, not user speech.
+            DeviceType::System
+        } else if avg_mic_rms > 0.004 && (avg_sys_rms <= 0.005 || avg_mic_rms > avg_sys_rms * 0.25) {
+            // Local user speech: either system is quiet, or local speech clearly exceeds acoustic bleed (cross-talk)
             DeviceType::Microphone
         } else if avg_sys_rms > 0.002 {
-            // Clear remote participant audio with quiet microphone:
+            // Remote participant audio
             DeviceType::System
         } else if avg_mic_rms > avg_sys_rms {
             DeviceType::Microphone

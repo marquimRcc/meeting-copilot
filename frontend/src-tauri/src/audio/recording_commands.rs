@@ -400,7 +400,8 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
             now.format("%Y-%m-%d_%H-%M-%S")
         )
     });
-    manager.set_meeting_name(Some(effective_meeting_name));
+    let meeting_id = format!("meeting-{}", chrono::Utc::now().timestamp_millis());
+    manager.set_meeting_name(Some(effective_meeting_name.clone()));
 
     // Set up error callback
     let app_for_error = app.clone();
@@ -436,7 +437,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     drop(engine_lifecycle_guard);
 
     // Start optimized parallel transcription task and store handle
-    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver);
+    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver, Some(meeting_id.clone()));
     {
         let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
         *global_task = Some(task_handle);
@@ -450,6 +451,12 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         let listener_id = app.listen("transcript-update", move |event: tauri::Event| {
             // Parse the transcript update from the event payload
             if let Ok(update) = serde_json::from_str::<TranscriptUpdate>(event.payload()) {
+                let speaker = match update.source.as_str() {
+                    "Microphone" => Some("Você".to_string()),
+                    "System Audio" => Some("Participante".to_string()),
+                    _ => None,
+                };
+
                 // Create structured transcript segment
                 let segment = crate::audio::recording_saver::TranscriptSegment {
                     id: format!("seg_{}", update.sequence_id),
@@ -461,6 +468,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
                     confidence: update.confidence,
                     sequence_id: update.sequence_id,
                     source: Some(update.source.clone()),
+                    speaker,
                 };
 
                 // Save to recording manager
@@ -480,7 +488,9 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started successfully with parallel processing",
         "devices": ["Default Microphone", "Default System Audio"],
-        "workers": 3
+        "workers": 3,
+        "meeting_id": meeting_id,
+        "meeting_name": effective_meeting_name,
     })).map_err(|e| e.to_string())?;
 
     // Update tray menu to reflect recording state
@@ -588,7 +598,8 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
             now.format("%Y-%m-%d_%H-%M-%S")
         )
     });
-    manager.set_meeting_name(Some(effective_meeting_name));
+    let meeting_id = format!("meeting-{}", chrono::Utc::now().timestamp_millis());
+    manager.set_meeting_name(Some(effective_meeting_name.clone()));
 
     // Set up error callback
     let app_for_error = app.clone();
@@ -624,7 +635,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     drop(engine_lifecycle_guard);
 
     // Start optimized parallel transcription task and store handle
-    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver);
+    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver, Some(meeting_id.clone()));
     {
         let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
         *global_task = Some(task_handle);
@@ -638,6 +649,12 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         let listener_id = app.listen("transcript-update", move |event: tauri::Event| {
             // Parse the transcript update from the event payload
             if let Ok(update) = serde_json::from_str::<TranscriptUpdate>(event.payload()) {
+                let speaker = match update.source.as_str() {
+                    "Microphone" => Some("Você".to_string()),
+                    "System Audio" => Some("Participante".to_string()),
+                    _ => None,
+                };
+
                 // Create structured transcript segment
                 let segment = crate::audio::recording_saver::TranscriptSegment {
                     id: format!("seg_{}", update.sequence_id),
@@ -649,6 +666,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
                     confidence: update.confidence,
                     sequence_id: update.sequence_id,
                     source: Some(update.source.clone()),
+                    speaker,
                 };
 
                 // Save to recording manager
@@ -671,7 +689,9 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
             mic_device_name.unwrap_or_else(|| "Default Microphone".to_string()),
             system_device_name.unwrap_or_else(|| "Default System Audio".to_string())
         ],
-        "workers": 3
+        "workers": 3,
+        "meeting_id": meeting_id,
+        "meeting_name": effective_meeting_name,
     })).map_err(|e| e.to_string())?;
 
     // Update tray menu to reflect recording state

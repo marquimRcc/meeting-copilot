@@ -24,6 +24,8 @@ pub struct TranscriptSegment {
     pub sequence_id: u64,
     #[serde(default)]
     pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 /// Meeting metadata structure
@@ -130,6 +132,7 @@ impl RecordingSaver {
             confidence: 1.0,
             sequence_id: 0,
             source: None,
+            speaker: None,
         };
         self.add_transcript_segment(segment);
     }

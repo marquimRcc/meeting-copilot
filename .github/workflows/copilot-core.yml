@@ -2,13 +2,14 @@ name: Copilot core
 on:
   workflow_dispatch:
   push:
-    paths: ['copilot/**', 'frontend/src/**', 'frontend/src-tauri/**', '.github/workflows/copilot-core.yml']
+    paths: ['copilot/**', 'frontend/**', '.github/workflows/copilot-core.yml']
   pull_request:
-    paths: ['copilot/**', 'frontend/src/**', 'frontend/src-tauri/**', '.github/workflows/copilot-core.yml']
+    paths: ['copilot/**', 'frontend/**', '.github/workflows/copilot-core.yml']
 permissions:
   contents: read
 jobs:
   core:
+    name: Copilot Engine (${{ matrix.os }})
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -25,3 +26,40 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run demo
+
+  frontend-typecheck:
+    name: Frontend Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+
+  rust-check:
+    name: Rust Backend Check (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Prepare Tauri sidecar placeholder
+        shell: bash
+        run: |
+          mkdir -p frontend/src-tauri/binaries
+          touch frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
+      - name: Cargo Check
+        run: cargo check --manifest-path frontend/src-tauri/Cargo.toml
+      - name: Cargo Test (Compile Only)
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --no-run

@@ -294,11 +294,11 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
   // Helper que reproduz a lógica determinística de resolução de canal do hook useMeetingCopilot
   function resolveCopilotChannel(source, isLoopbackOnly) {
-    if (source === 'Microphone') {
-      return 'mic';
-    } else if (source === 'System Audio') {
+    if (isLoopbackOnly) {
       return 'remote-system';
-    } else if (isLoopbackOnly) {
+    } else if (source === 'Microphone') {
+      return 'microphone';
+    } else if (source === 'System Audio') {
       return 'remote-system';
     }
     return 'unknown';
@@ -309,10 +309,10 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     assert.equal(resolveCopilotChannel('System Audio', false), 'remote-system');
 
     // Quando vem do stream do microfone local (o próprio usuário falando)
-    assert.equal(resolveCopilotChannel('Microphone', false), 'mic');
+    assert.equal(resolveCopilotChannel('Microphone', false), 'microphone');
 
-    // Precedência estrita: se source é 'Microphone', deve ser SEMPRE 'mic' mesmo se isLoopbackOnly for true
-    assert.equal(resolveCopilotChannel('Microphone', true), 'mic');
+    // Precedência estrita: se microfone desativado ('none'), opera exclusivamente em loopback
+    assert.equal(resolveCopilotChannel('Microphone', true), 'remote-system');
 
     // Quando o microfone foi explicitamente desativado no Meetily ('none')
     assert.equal(resolveCopilotChannel(undefined, true), 'remote-system');
@@ -321,7 +321,7 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     assert.equal(resolveCopilotChannel(undefined, false), 'unknown');
   });
 
-  test('pergunta originada do microfone ("mic") não deve acionar sugestão automática', () => {
+  test('pergunta originada do microfone ("microphone") não deve acionar sugestão automática', () => {
     const buffer = new TranscriptBuffer('s-diarization');
     const segment = {
       id: 'mic-seg-1',
@@ -331,14 +331,14 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
       endMs: 3500,
       text: 'Marcos, você sabe como resolver o erro 500 no serviço?',
       final: true,
-      channel: resolveCopilotChannel('Microphone', false) // 'mic'
+      channel: resolveCopilotChannel('Microphone', false) // 'microphone'
     };
 
     const { isQuestionEligible } = buffer.append(segment);
     const detected = detector.detect(segment);
 
-    // O canal 'mic' é rejeitado pelo detector para evitar auto-disparo de perguntas feitas pelo próprio usuário:
-    assert.equal(segment.channel, 'mic');
+    // O canal 'microphone' é rejeitado pelo detector para evitar auto-disparo de perguntas feitas pelo próprio usuário:
+    assert.equal(segment.channel, 'microphone');
     assert.equal(detected, null, 'O detector rejeita falas de microfone do próprio usuário');
 
     // E a condição de disparo automático é rigorosamente falsa:
@@ -394,7 +394,7 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
     // Mesmo que o segmento tenha sido falado no microfone pelo próprio usuário:
     const channel = resolveCopilotChannel('Microphone', false);
-    assert.equal(channel, 'mic');
+    assert.equal(channel, 'microphone');
 
     // O fluxo manual aceita o texto explicitamente
     const manualQuestionObj = {
@@ -558,11 +558,12 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
   });
 
   test('matriz de classificação de locutor prioriza microfone em sobreposição (cross-talk) e fala clara', () => {
-    // Função espelho do classificador em Rust (pipeline.rs:820-845)
+    // Função espelho do classificador em Rust (pipeline.rs:820-850)
     function classifySpeaker(mic_rms, sys_rms) {
-      if (mic_rms > 0.008) {
-        return 'Microphone';
-      } else if (mic_rms > 0.003 && mic_rms > sys_rms * 0.15) {
+      const is_acoustic_bleed = sys_rms > 0.005 && mic_rms < (sys_rms * 0.25);
+      if (is_acoustic_bleed) {
+        return 'System';
+      } else if (mic_rms > 0.004 && (sys_rms <= 0.005 || mic_rms > sys_rms * 0.25)) {
         return 'Microphone';
       } else if (sys_rms > 0.002) {
         return 'System';
@@ -573,16 +574,20 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
       }
     }
 
-    // Caso 1 apontado na revisão: mic=0.010, sys=0.040 (usuário falando junto com participante)
-    assert.equal(classifySpeaker(0.010, 0.040), 'Microphone', 'Fala do usuário (0.010 > 0.008) deve ser estritamente Microphone');
+    // Caso 1: Alto volume do sistema com vazamento de 10% no microfone (sys=0.100, mic=0.010):
+    // Deve ser classificado como System (evita falso positivo de Você quando o som do laptop vaza)
+    assert.equal(classifySpeaker(0.010, 0.100), 'System', 'Sangramento acústico em volume alto (mic=0.010, sys=0.100) deve ser System');
 
-    // Caso 2: fala direta no microfone com sistema quieto
+    // Caso 2: Sobreposição real (cross-talk): usuário falando junto com participante (sys=0.030, mic=0.010, proporção 0.33 > 0.25)
+    assert.equal(classifySpeaker(0.010, 0.030), 'Microphone', 'Fala ativa do usuário sobrepondo áudio remoto deve ser Microphone');
+
+    // Caso 3: fala direta no microfone com sistema quieto
     assert.equal(classifySpeaker(0.025, 0.000), 'Microphone');
 
-    // Caso 3: participante falando com microfone em silêncio
+    // Caso 4: participante falando com microfone em silêncio
     assert.equal(classifySpeaker(0.001, 0.035), 'System');
 
-    // Caso 4: eco acústico de alto-falante (sys=0.050, vazamento no mic=0.0035, proporção 0.07 < 0.15)
-    assert.equal(classifySpeaker(0.0035, 0.050), 'System', 'Vazamento residual acústico abaixo de 15% deve ser classificado como System');
+    // Caso 5: eco acústico de alto-falante moderado (sys=0.050, mic=0.0035, proporção 0.07 < 0.25)
+    assert.equal(classifySpeaker(0.0035, 0.050), 'System', 'Vazamento residual acústico abaixo de 25% deve ser classificado como System');
   });
 });
