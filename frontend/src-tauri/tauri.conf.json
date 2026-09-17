@@ -27,7 +27,7 @@
                 "default-src": "'self'",
                 "style-src": "'self' 'unsafe-inline'",
                 "img-src": "'self' asset: https://asset.localhost data:",
-                "connect-src": "'self' http://localhost:11434 http://localhost:5167 http://localhost:8178 https://api.ollama.ai"
+                "connect-src": "'self' http://localhost:11434 http://127.0.0.1:11434 http://localhost:1234 http://127.0.0.1:1234 http://localhost:5167 http://localhost:8178 https://api.ollama.ai https://api.openai.com https://api.groq.com https://openrouter.ai"
             },
             "assetProtocol": {
                 "enable": true,
@@ -40,7 +40,8 @@
                     "identifier": "main",
                     "description": "Main window capability with file system and media access",
                     "windows": [
-                        "main"
+                        "main",
+                        "copilot-overlay"
                     ],
                     "permissions": [
                         "fs:default",
