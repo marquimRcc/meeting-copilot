@@ -294,11 +294,11 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
   // Helper que reproduz a lógica determinística de resolução de canal do hook useMeetingCopilot
   function resolveCopilotChannel(source, isLoopbackOnly) {
-    if (source === 'Microphone') {
-      return 'mic';
-    } else if (source === 'System Audio') {
+    if (isLoopbackOnly) {
       return 'remote-system';
-    } else if (isLoopbackOnly) {
+    } else if (source === 'Microphone') {
+      return 'microphone';
+    } else if (source === 'System Audio') {
       return 'remote-system';
     }
     return 'unknown';
@@ -309,10 +309,10 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     assert.equal(resolveCopilotChannel('System Audio', false), 'remote-system');
 
     // Quando vem do stream do microfone local (o próprio usuário falando)
-    assert.equal(resolveCopilotChannel('Microphone', false), 'mic');
+    assert.equal(resolveCopilotChannel('Microphone', false), 'microphone');
 
-    // Precedência estrita: se source é 'Microphone', deve ser SEMPRE 'mic' mesmo se isLoopbackOnly for true
-    assert.equal(resolveCopilotChannel('Microphone', true), 'mic');
+    // Precedência estrita: se microfone desativado ('none'), opera exclusivamente em loopback
+    assert.equal(resolveCopilotChannel('Microphone', true), 'remote-system');
 
     // Quando o microfone foi explicitamente desativado no Meetily ('none')
     assert.equal(resolveCopilotChannel(undefined, true), 'remote-system');
@@ -321,7 +321,7 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     assert.equal(resolveCopilotChannel(undefined, false), 'unknown');
   });
 
-  test('pergunta originada do microfone ("mic") não deve acionar sugestão automática', () => {
+  test('pergunta originada do microfone ("microphone") não deve acionar sugestão automática', () => {
     const buffer = new TranscriptBuffer('s-diarization');
     const segment = {
       id: 'mic-seg-1',
@@ -331,14 +331,14 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
       endMs: 3500,
       text: 'Marcos, você sabe como resolver o erro 500 no serviço?',
       final: true,
-      channel: resolveCopilotChannel('Microphone', false) // 'mic'
+      channel: resolveCopilotChannel('Microphone', false) // 'microphone'
     };
 
     const { isQuestionEligible } = buffer.append(segment);
     const detected = detector.detect(segment);
 
-    // O canal 'mic' é rejeitado pelo detector para evitar auto-disparo de perguntas feitas pelo próprio usuário:
-    assert.equal(segment.channel, 'mic');
+    // O canal 'microphone' é rejeitado pelo detector para evitar auto-disparo de perguntas feitas pelo próprio usuário:
+    assert.equal(segment.channel, 'microphone');
     assert.equal(detected, null, 'O detector rejeita falas de microfone do próprio usuário');
 
     // E a condição de disparo automático é rigorosamente falsa:
@@ -394,7 +394,7 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
     // Mesmo que o segmento tenha sido falado no microfone pelo próprio usuário:
     const channel = resolveCopilotChannel('Microphone', false);
-    assert.equal(channel, 'mic');
+    assert.equal(channel, 'microphone');
 
     // O fluxo manual aceita o texto explicitamente
     const manualQuestionObj = {
