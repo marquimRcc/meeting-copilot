@@ -132,6 +132,7 @@ impl RecordingSaver {
             confidence: 1.0,
             sequence_id: 0,
             source: None,
+            speaker: None,
         };
         self.add_transcript_segment(segment);
     }
