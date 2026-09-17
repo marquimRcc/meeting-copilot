@@ -558,11 +558,12 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
   });
 
   test('matriz de classificação de locutor prioriza microfone em sobreposição (cross-talk) e fala clara', () => {
-    // Função espelho do classificador em Rust (pipeline.rs:820-845)
+    // Função espelho do classificador em Rust (pipeline.rs:820-850)
     function classifySpeaker(mic_rms, sys_rms) {
-      if (mic_rms > 0.008) {
-        return 'Microphone';
-      } else if (mic_rms > 0.003 && mic_rms > sys_rms * 0.15) {
+      const is_acoustic_bleed = sys_rms > 0.005 && mic_rms < (sys_rms * 0.25);
+      if (is_acoustic_bleed) {
+        return 'System';
+      } else if (mic_rms > 0.004 && (sys_rms <= 0.005 || mic_rms > sys_rms * 0.25)) {
         return 'Microphone';
       } else if (sys_rms > 0.002) {
         return 'System';
@@ -573,16 +574,20 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
       }
     }
 
-    // Caso 1 apontado na revisão: mic=0.010, sys=0.040 (usuário falando junto com participante)
-    assert.equal(classifySpeaker(0.010, 0.040), 'Microphone', 'Fala do usuário (0.010 > 0.008) deve ser estritamente Microphone');
+    // Caso 1: Alto volume do sistema com vazamento de 10% no microfone (sys=0.100, mic=0.010):
+    // Deve ser classificado como System (evita falso positivo de Você quando o som do laptop vaza)
+    assert.equal(classifySpeaker(0.010, 0.100), 'System', 'Sangramento acústico em volume alto (mic=0.010, sys=0.100) deve ser System');
 
-    // Caso 2: fala direta no microfone com sistema quieto
+    // Caso 2: Sobreposição real (cross-talk): usuário falando junto com participante (sys=0.030, mic=0.010, proporção 0.33 > 0.25)
+    assert.equal(classifySpeaker(0.010, 0.030), 'Microphone', 'Fala ativa do usuário sobrepondo áudio remoto deve ser Microphone');
+
+    // Caso 3: fala direta no microfone com sistema quieto
     assert.equal(classifySpeaker(0.025, 0.000), 'Microphone');
 
-    // Caso 3: participante falando com microfone em silêncio
+    // Caso 4: participante falando com microfone em silêncio
     assert.equal(classifySpeaker(0.001, 0.035), 'System');
 
-    // Caso 4: eco acústico de alto-falante (sys=0.050, vazamento no mic=0.0035, proporção 0.07 < 0.15)
-    assert.equal(classifySpeaker(0.0035, 0.050), 'System', 'Vazamento residual acústico abaixo de 15% deve ser classificado como System');
+    // Caso 5: eco acústico de alto-falante moderado (sys=0.050, mic=0.0035, proporção 0.07 < 0.25)
+    assert.equal(classifySpeaker(0.0035, 0.050), 'System', 'Vazamento residual acústico abaixo de 25% deve ser classificado como System');
   });
 });

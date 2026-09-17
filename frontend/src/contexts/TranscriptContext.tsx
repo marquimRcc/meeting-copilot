@@ -92,21 +92,19 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
         await indexedDBService.init();
 
         // Listen for recording-started event
-        unlistenRecordingStarted = await recordingService.onRecordingStarted(async () => {
+        unlistenRecordingStarted = await recordingService.onRecordingStarted(async (payload) => {
           try {
-            // Generate unique meeting ID
-            const meetingId = `meeting-${Date.now()}`;
+            // Adopt meeting ID from backend payload or fallback to generated ID
+            const meetingId = payload?.meeting_id || `meeting-${Date.now()}`;
             setCurrentMeetingId(meetingId);
 
             // Store in sessionStorage as fallback for markMeetingAsSaved
             sessionStorage.setItem('indexeddb_current_meeting_id', meetingId);
             console.log('[Recording Started] 💾 IndexedDB meeting ID stored:', meetingId);
 
-            // Get meeting name
-            const meetingName = await recordingService.getRecordingMeetingName();
-
-            // Use a better fallback that matches the backend's naming pattern
-            const effectiveTitle = meetingName || `Meeting ${new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')}`;
+            // Get meeting name from payload or backend query
+            const backendMeetingName = await recordingService.getRecordingMeetingName();
+            const effectiveTitle = payload?.meeting_name || backendMeetingName || `Meeting ${new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')}`;
 
             // Initialize meeting metadata in IndexedDB
             await indexedDBService.saveMeetingMetadata({
@@ -213,7 +211,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
           transcriptBuffer.delete(sequenceId);
           console.log(`Force flush: processing transcript with sequence_id ${sequenceId}`);
         } else {
-          const transcriptAge = now - parseInt(transcript.id.split('-')[0]);
+          const transcriptAge = now - ((transcript as any)._receivedAt || now);
           if (transcriptAge > staleThreshold) {
             // Process stale transcripts (>100ms old - safety net)
             staleTranscripts.push(transcript);
@@ -244,27 +242,49 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
 
       if (allNewTranscripts.length > 0) {
         setTranscripts(prev => {
-          // Create a set of existing sequence_ids for deduplication
-          const existingSequenceIds = new Set(prev.map(t => t.sequence_id).filter(id => id !== undefined));
+          let updated = [...prev];
+          let hasChanges = false;
 
-          // Filter out any new transcripts that already exist
-          const uniqueNewTranscripts = allNewTranscripts.filter(transcript =>
-            transcript.sequence_id !== undefined && !existingSequenceIds.has(transcript.sequence_id)
-          );
+          for (const newT of allNewTranscripts) {
+            if (newT.sequence_id === undefined) {
+              updated.push(newT);
+              hasChanges = true;
+              continue;
+            }
 
-          // Only combine if we have unique new transcripts
-          if (uniqueNewTranscripts.length === 0) {
-            console.log('No unique transcripts to add - all were duplicates');
-            return prev; // No new unique transcripts to add
+            const existingIndex = updated.findIndex(t => t.sequence_id === newT.sequence_id);
+            if (existingIndex >= 0) {
+              const existing = updated[existingIndex];
+              // Update in-place if text was corrected by Whisper, or partial state, speaker, or timestamps changed
+              if (
+                existing.text !== newT.text ||
+                existing.is_partial !== newT.is_partial ||
+                existing.speaker !== newT.speaker ||
+                existing.source !== newT.source ||
+                existing.audio_end_time !== newT.audio_end_time
+              ) {
+                updated[existingIndex] = {
+                  ...existing,
+                  ...newT,
+                  // Keep stable ID
+                  id: existing.id || newT.id,
+                };
+                hasChanges = true;
+                console.log(`✏️ Updated existing transcript seq_${newT.sequence_id} (partial: ${existing.is_partial} -> ${newT.is_partial})`);
+              }
+            } else {
+              updated.push(newT);
+              hasChanges = true;
+            }
           }
 
-          console.log(`Adding ${uniqueNewTranscripts.length} unique transcripts out of ${allNewTranscripts.length} received`);
-
-          // Merge with existing transcripts, maintaining chronological order
-          const combined = [...prev, ...uniqueNewTranscripts];
+          if (!hasChanges) {
+            console.log('No transcript changes to apply - all identical');
+            return prev;
+          }
 
           // Sort by chunk_start_time first, then by sequence_id
-          return combined.sort((a, b) => {
+          return updated.sort((a, b) => {
             const chunkTimeDiff = (a.chunk_start_time || 0) - (b.chunk_start_time || 0);
             if (chunkTimeDiff !== 0) return chunkTimeDiff;
             return (a.sequence_id || 0) - (b.sequence_id || 0);
@@ -296,19 +316,32 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             buffer_size_before: transcriptBuffer.size
           });
 
-          // Check for duplicate sequence_id before processing
-          if (transcriptBuffer.has(update.sequence_id)) {
-            console.log('🚫 MAIN LISTENER: Duplicate sequence_id, skipping buffer:', update.sequence_id);
+          // Session isolation: drop updates from previous or different meetings
+          if (update.meeting_id && currentMeetingId && update.meeting_id !== currentMeetingId) {
+            console.log('🚫 MAIN LISTENER: Dropping transcript update from different meeting:', update.meeting_id, 'expected:', currentMeetingId);
             return;
+          }
+
+          // Check if sequence_id is already buffered with identical content
+          if (transcriptBuffer.has(update.sequence_id)) {
+            const existing = transcriptBuffer.get(update.sequence_id);
+            if (existing && existing.text === update.text && existing.is_partial === update.is_partial) {
+              console.log('🚫 MAIN LISTENER: Duplicate sequence_id with identical content, skipping buffer:', update.sequence_id);
+              return;
+            }
           }
 
           const speaker = update.source === 'Microphone'
             ? 'Você'
             : (update.source === 'System Audio' ? 'Participante' : undefined);
 
-          // Create transcript for buffer with NEW timestamp fields and speaker attribution
+          const stableId = update.sequence_id !== undefined
+            ? `seq_${update.sequence_id}`
+            : `${Date.now()}-${transcriptCounter++}`;
+
+          // Create transcript for buffer with stable ID, timestamp fields, and speaker attribution
           const newTranscript: Transcript = {
-            id: `${Date.now()}-${transcriptCounter++}`,
+            id: stableId,
             text: update.text,
             timestamp: update.timestamp,
             sequence_id: update.sequence_id,
@@ -321,8 +354,9 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             duration: update.duration,
             source: update.source,
             speaker,
-            meeting_id: currentMeetingId || undefined,
+            meeting_id: update.meeting_id || currentMeetingId || undefined,
           };
+          (newTranscript as any)._receivedAt = now;
 
           // Add to buffer
           transcriptBuffer.set(update.sequence_id, newTranscript);
@@ -426,7 +460,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     });
 
     const newTranscript: Transcript = {
-      id: update.sequence_id ? update.sequence_id.toString() : Date.now().toString(),
+      id: update.sequence_id ? `seq_${update.sequence_id}` : Date.now().toString(),
       text: update.text,
       timestamp: update.timestamp,
       sequence_id: update.sequence_id || 0,
@@ -440,19 +474,19 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       speaker: update.source === 'Microphone'
         ? 'Você'
         : (update.source === 'System Audio' ? 'Participante' : undefined),
-      meeting_id: currentMeetingId || undefined,
+      meeting_id: update.meeting_id || currentMeetingId || undefined,
     };
 
     setTranscripts(prev => {
-      console.log('📊 Current transcripts count before update:', prev.length);
-
-      // Check if this transcript already exists
-      const exists = prev.some(
-        t => t.text === update.text && t.timestamp === update.timestamp
-      );
-      if (exists) {
-        console.log('🚫 Duplicate transcript detected, skipping:', update.text.substring(0, 30) + '...');
-        return prev;
+      const existingIndex = prev.findIndex(t => t.sequence_id === newTranscript.sequence_id);
+      if (existingIndex >= 0) {
+        const existing = prev[existingIndex];
+        if (existing.text === newTranscript.text && existing.is_partial === newTranscript.is_partial) {
+          return prev;
+        }
+        const updated = [...prev];
+        updated[existingIndex] = { ...existing, ...newTranscript, id: existing.id || newTranscript.id };
+        return updated.sort((a, b) => (a.sequence_id || 0) - (b.sequence_id || 0));
       }
 
       // Add new transcript and sort by sequence_id to maintain order
@@ -460,15 +494,9 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       const sorted = updated.sort((a, b) => (a.sequence_id || 0) - (b.sequence_id || 0));
 
       console.log('✅ Added new transcript. New count:', sorted.length);
-      console.log('📝 Latest transcript:', {
-        id: newTranscript.id,
-        text: newTranscript.text.substring(0, 30) + '...',
-        sequence_id: newTranscript.sequence_id
-      });
-
       return sorted;
     });
-  }, []);
+  }, [currentMeetingId]);
 
   // Copy transcript to clipboard with recording-relative timestamps
   const copyTranscript = useCallback(() => {

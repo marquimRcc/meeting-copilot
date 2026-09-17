@@ -33,6 +33,7 @@ export interface TranscriptUpdate {
   audio_start_time: number; // Seconds from recording start
   audio_end_time: number;   // Seconds from recording start
   duration: number;          // Segment duration in seconds
+  meeting_id?: string;
 }
 
 export interface Block {

@@ -43,6 +43,8 @@ pub struct TranscriptUpdate {
     pub audio_start_time: f64, // Seconds from recording start (e.g., 125.3)
     pub audio_end_time: f64,   // Seconds from recording start (e.g., 128.6)
     pub duration: f64,          // Segment duration in seconds (e.g., 3.3)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meeting_id: Option<String>,
 }
 
 // NOTE: get_transcript_history and get_recording_meeting_name functions
@@ -52,6 +54,7 @@ pub struct TranscriptUpdate {
 pub fn start_transcription_task<R: Runtime>(
     app: AppHandle<R>,
     transcription_receiver: tokio::sync::mpsc::UnboundedReceiver<AudioChunk>,
+    meeting_id: Option<String>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         info!("🚀 Starting optimized parallel transcription task - guaranteeing zero chunk loss");
@@ -85,6 +88,7 @@ pub fn start_transcription_task<R: Runtime>(
 
         // Spawn worker tasks
         let mut worker_handles = Vec::new();
+        let meeting_id_task = meeting_id.clone();
         for worker_id in 0..NUM_WORKERS {
             let engine_clone = match &transcription_engine {
                 TranscriptionEngine::Whisper(e) => TranscriptionEngine::Whisper(e.clone()),
@@ -96,6 +100,7 @@ pub fn start_transcription_task<R: Runtime>(
             let chunks_completed_clone = chunks_completed.clone();
             let input_finished_clone = input_finished.clone();
             let chunks_queued_clone = chunks_queued.clone();
+            let meeting_id_clone = meeting_id_task.clone();
 
             let worker_handle = tokio::spawn(async move {
                 info!("👷 Worker {} started", worker_id);
@@ -221,6 +226,7 @@ pub fn start_transcription_task<R: Runtime>(
                                             audio_start_time,
                                             audio_end_time,
                                             duration: chunk_duration,
+                                            meeting_id: meeting_id_clone.clone(),
                                         };
 
                                         if let Err(e) = app_clone.emit("transcript-update", &update)

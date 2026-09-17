@@ -22,6 +22,14 @@ export interface RecordingStoppedPayload {
   meeting_name?: string;
 }
 
+export interface RecordingStartedPayload {
+  message?: string;
+  devices?: string[];
+  workers?: number;
+  meeting_id?: string;
+  meeting_name?: string;
+}
+
 // Bound the start invoke: > ~40s Bluetooth mic cold-start and ~90s worst-case
 // Windows device enumeration, but still finite so a hung native start settles
 // the UI into ERROR instead of an eternal STARTING spinner.
@@ -133,8 +141,10 @@ export class RecordingService {
    * @param callback - Function to call when recording starts
    * @returns Promise that resolves to unlisten function
    */
-  async onRecordingStarted(callback: () => void): Promise<UnlistenFn> {
-    return listen('recording-started', callback);
+  async onRecordingStarted(callback: (payload?: RecordingStartedPayload) => void): Promise<UnlistenFn> {
+    return listen<RecordingStartedPayload>('recording-started', (event) => {
+      callback(event.payload);
+    });
   }
 
   /**

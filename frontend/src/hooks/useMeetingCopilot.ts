@@ -225,15 +225,15 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       }
 
       // Precedência estrita de canal:
-      // A) Origem confirmada 'Microphone' SEMPRE é 'mic', mesmo com loopback ativo
-      // B) Origem confirmada 'System Audio' é 'remote-system'
-      // C) Se a origem for omitida/ambígua, usa 'remote-system' apenas se mic estiver desativado ('none')
+      // A) Se microfone estiver explicitamente desativado ('none'), opera em loopback exclusivo ('remote-system')
+      // B) Origem confirmada 'Microphone' é 'mic'
+      // C) Origem confirmada 'System Audio' é 'remote-system'
       let channel: CopilotSegment['channel'] = 'unknown';
-      if (t.source === 'Microphone') {
+      if (isLoopbackOnly) {
+        channel = 'remote-system';
+      } else if (t.source === 'Microphone') {
         channel = 'mic';
       } else if (t.source === 'System Audio') {
-        channel = 'remote-system';
-      } else if (isLoopbackOnly) {
         channel = 'remote-system';
       }
 
