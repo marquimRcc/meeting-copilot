@@ -294,10 +294,12 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
   // Helper que reproduz a lógica determinística de resolução de canal do hook useMeetingCopilot
   function resolveCopilotChannel(source, isLoopbackOnly) {
-    if (source === 'System Audio' || isLoopbackOnly) {
-      return 'remote-system';
-    } else if (source === 'Microphone') {
+    if (source === 'Microphone') {
       return 'mic';
+    } else if (source === 'System Audio') {
+      return 'remote-system';
+    } else if (isLoopbackOnly) {
+      return 'remote-system';
     }
     return 'unknown';
   }
@@ -308,6 +310,9 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
     // Quando vem do stream do microfone local (o próprio usuário falando)
     assert.equal(resolveCopilotChannel('Microphone', false), 'mic');
+
+    // Precedência estrita: se source é 'Microphone', deve ser SEMPRE 'mic' mesmo se isLoopbackOnly for true
+    assert.equal(resolveCopilotChannel('Microphone', true), 'mic');
 
     // Quando o microfone foi explicitamente desativado no Meetily ('none')
     assert.equal(resolveCopilotChannel(undefined, true), 'remote-system');
@@ -404,5 +409,85 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
     assert.equal(manualQuestionObj.reason, 'manual');
     assert.equal(manualQuestionObj.text, userSpokenQuestion);
+  });
+
+  test('processamento em lote ingere múltiplos segmentos recebidos simultaneamente', () => {
+    const buffer = new TranscriptBuffer('s-batch');
+    const processedIds = new Set();
+    const batchTranscripts = [
+      { id: 'b1', text: 'Bom dia a todos.', is_partial: false, source: 'System Audio', audio_start_time: 1, audio_end_time: 3 },
+      { id: 'b2', text: 'Hoje vamos falar sobre a migração de banco.', is_partial: false, source: 'System Audio', audio_start_time: 3, audio_end_time: 6 },
+      { id: 'b3', text: 'Como vamos migrar o Oracle para Postgres?', is_partial: false, source: 'System Audio', audio_start_time: 6, audio_end_time: 9 }
+    ];
+
+    const detectedQuestions = [];
+
+    for (let i = 0; i < batchTranscripts.length; i++) {
+      const t = batchTranscripts[i];
+      const segId = t.id || String(i);
+      if (processedIds.has(segId) && !t.is_partial) continue;
+      if (!t.is_partial) processedIds.add(segId);
+
+      const channel = resolveCopilotChannel(t.source, false);
+      const seg = {
+        id: segId,
+        sessionId: 's-batch',
+        sequence: i,
+        startMs: Math.round(t.audio_start_time * 1000),
+        endMs: Math.round(t.audio_end_time * 1000),
+        text: t.text,
+        final: !t.is_partial,
+        channel
+      };
+
+      const { isQuestionEligible } = buffer.append(seg);
+      if (isQuestionEligible && channel === 'remote-system') {
+        const detected = detector.detect(seg);
+        if (detected) {
+          detectedQuestions.push(detected);
+        }
+      }
+    }
+
+    // Todos os 3 segmentos devem estar no buffer (nenhum descartado por olhar só o último)
+    assert.equal(buffer.snapshot().length, 3);
+    assert.equal(detectedQuestions.length, 1);
+    assert.match(detectedQuestions[0].text, /Como vamos migrar o Oracle para Postgres/);
+
+    // Em uma segunda execução com o mesmo lote, nada deve ser reprocessado
+    const previousDetectedCount = detectedQuestions.length;
+    for (let i = 0; i < batchTranscripts.length; i++) {
+      const t = batchTranscripts[i];
+      const segId = t.id || String(i);
+      if (processedIds.has(segId) && !t.is_partial) continue;
+      // Não deve chegar aqui
+      assert.fail(`Segmento ${segId} não deveria ser reprocessado`);
+    }
+    assert.equal(detectedQuestions.length, previousDetectedCount);
+  });
+
+  test('isolamento de sessão reseta buffer e deduplicador ao trocar de reunião', () => {
+    const buffer = new TranscriptBuffer('meeting-1');
+    const processedIds = new Set();
+
+    // Reunião 1
+    buffer.append({ id: 'm1-1', sessionId: 'meeting-1', sequence: 1, startMs: 0, endMs: 2000, text: 'Fala reunião 1', final: true, channel: 'remote-system' });
+    processedIds.add('m1-1');
+    assert.equal(buffer.snapshot().length, 1);
+    assert.equal(processedIds.size, 1);
+
+    // Troca para Reunião 2: limpeza total
+    buffer.clear();
+    detector.clear();
+    processedIds.clear();
+
+    assert.equal(buffer.snapshot().length, 0);
+    assert.equal(processedIds.size, 0);
+
+    // Reunião 2 começa do zero
+    buffer.append({ id: 'm2-1', sessionId: 'meeting-2', sequence: 1, startMs: 0, endMs: 2000, text: 'Fala reunião 2', final: true, channel: 'remote-system' });
+    processedIds.add('m2-1');
+    assert.equal(buffer.snapshot().length, 1);
+    assert.equal(buffer.snapshot()[0].text, 'Fala reunião 2');
   });
 });
