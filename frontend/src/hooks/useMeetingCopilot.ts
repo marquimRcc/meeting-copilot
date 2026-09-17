@@ -30,7 +30,7 @@ export interface UseMeetingCopilotReturn {
 }
 
 export function useMeetingCopilot(): UseMeetingCopilotReturn {
-  const { transcripts } = useTranscripts();
+  const { transcripts, currentMeetingId } = useTranscripts();
   const { modelConfig, providerApiKeys, selectedDevices } = useConfig();
 
   const [currentQuestion, setCurrentQuestion] = useState<CopilotQuestion | null>(null);
@@ -42,10 +42,14 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const [isAutoTrigger, setIsAutoTrigger] = useState<boolean>(false);
 
   // Instâncias singleton de processamento
-  const bufferRef = useRef<TranscriptBuffer>(new TranscriptBuffer('copilot-session'));
+  const bufferRef = useRef<TranscriptBuffer>(new TranscriptBuffer(currentMeetingId || 'copilot-session'));
   const detectorRef = useRef<QuestionDetector>(new QuestionDetector());
   const indexRef = useRef<BM25Index>(new BM25Index(defaultDocuments));
   const assistantRef = useRef<CopilotAssistantService>(new CopilotAssistantService());
+
+  // Rastreamento de sessão e segmentos processados (suporte a lotes e isolamento)
+  const lastMeetingIdRef = useRef<string | null>(currentMeetingId);
+  const processedSegmentIdsRef = useRef<Set<string>>(new Set());
 
   // Refs de estado para callbacks e atalhos
   const isAutoTriggerRef = useRef(isAutoTrigger);
@@ -128,9 +132,8 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       text: s.text
     }));
 
-    const config = getCopilotConfig();
-
     try {
+      const config = getCopilotConfig();
       await assistantRef.current.generateSuggestion(
         {
           question: questionText,
@@ -161,13 +164,31 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       setIsGenerating(false);
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      toast.error('Falha na configuração do Copiloto', {
+        description: msg
+      });
     }
   }, [getCopilotConfig]);
 
-  // Processamento automático de novas falas
+  // Processamento automático de falas recebidas (suporte a lotes e isolamento de sessão)
   useEffect(() => {
-    // Quando a lista de transcrições é limpa (fim da reunião ou início de uma nova)
+    // 1. Detecta troca de reunião para garantir isolamento estrito de contexto
+    if (currentMeetingId !== lastMeetingIdRef.current) {
+      lastMeetingIdRef.current = currentMeetingId;
+      processedSegmentIdsRef.current.clear();
+      assistantRef.current.cancel();
+      bufferRef.current.clear();
+      detectorRef.current.clear();
+      setIsGenerating(false);
+      setStreamingAnswer('');
+      setCurrentQuestion(null);
+      setEvidence([]);
+      setError(null);
+    }
+
+    // 2. Quando a lista de transcrições é limpa
     if (!transcripts || transcripts.length === 0) {
+      processedSegmentIdsRef.current.clear();
       assistantRef.current.cancel();
       bufferRef.current.clear();
       detectorRef.current.clear();
@@ -178,42 +199,58 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       return;
     }
 
-    const last = transcripts[transcripts.length - 1];
-    if (!last || last.is_partial) return;
-
-    // Atribuição de canal de áudio baseada na diarização dual-stream:
-    // - Se source for 'System Audio' ou microfone desativado ('none'), canal é 'remote-system' (elegível para auto-trigger).
-    // - Se source for 'Microphone', canal é 'mic' (fala do próprio usuário, não dispara auto-sugestão).
-    // - Caso contrário, fallback seguro para 'unknown'.
     const isLoopbackOnly = selectedDevices?.micDevice === 'none';
-    let channel: CopilotSegment['channel'] = 'unknown';
-    if (last.source === 'System Audio' || isLoopbackOnly) {
-      channel = 'remote-system';
-    } else if (last.source === 'Microphone') {
-      channel = 'mic';
-    }
 
-    const segment: CopilotSegment = {
-      id: last.id || String(last.sequence_id),
-      sessionId: 'copilot-session',
-      sequence: last.sequence_id ?? transcripts.length,
-      startMs: Math.round((last.audio_start_time ?? 0) * 1000),
-      endMs: Math.round((last.audio_end_time ?? (last.audio_start_time ?? 0) + 3) * 1000),
-      text: last.text,
-      final: !last.is_partial,
-      channel
-    };
+    // 3. Processa todos os novos segmentos recebidos (inclusive múltiplos em lote)
+    for (let i = 0; i < transcripts.length; i++) {
+      const t = transcripts[i];
+      if (!t) continue;
 
-    const { isQuestionEligible } = bufferRef.current.append(segment);
+      const segId = t.id || String(t.sequence_id ?? i);
 
-    // O gatilho automático dispara APENAS se for canal 'remote-system' (áudio remoto)
-    if (isAutoTriggerRef.current && isQuestionEligible && channel === 'remote-system') {
-      const detected = detectorRef.current.detect(segment);
-      if (detected) {
-        executeCopilotSuggestion(detected.text, detected);
+      // Pula se já foi processado como final
+      if (processedSegmentIdsRef.current.has(segId) && !t.is_partial) {
+        continue;
+      }
+      if (!t.is_partial) {
+        processedSegmentIdsRef.current.add(segId);
+      }
+
+      // Precedência estrita de canal:
+      // A) Origem confirmada 'Microphone' SEMPRE é 'mic', mesmo com loopback ativo
+      // B) Origem confirmada 'System Audio' é 'remote-system'
+      // C) Se a origem for omitida/ambígua, usa 'remote-system' apenas se mic estiver desativado ('none')
+      let channel: CopilotSegment['channel'] = 'unknown';
+      if (t.source === 'Microphone') {
+        channel = 'mic';
+      } else if (t.source === 'System Audio') {
+        channel = 'remote-system';
+      } else if (isLoopbackOnly) {
+        channel = 'remote-system';
+      }
+
+      const segment: CopilotSegment = {
+        id: segId,
+        sessionId: currentMeetingId || 'copilot-session',
+        sequence: t.sequence_id ?? i,
+        startMs: Math.round((t.audio_start_time ?? 0) * 1000),
+        endMs: Math.round((t.audio_end_time ?? (t.audio_start_time ?? 0) + 3) * 1000),
+        text: t.text,
+        final: !t.is_partial,
+        channel
+      };
+
+      const { isQuestionEligible } = bufferRef.current.append(segment);
+
+      // O gatilho automático dispara APENAS para canais 'remote-system' (áudio de outros participantes)
+      if (isAutoTriggerRef.current && isQuestionEligible && channel === 'remote-system') {
+        const detected = detectorRef.current.detect(segment);
+        if (detected) {
+          executeCopilotSuggestion(detected.text, detected);
+        }
       }
     }
-  }, [transcripts, selectedDevices, executeCopilotSuggestion]);
+  }, [transcripts, currentMeetingId, selectedDevices, executeCopilotSuggestion]);
 
   // Disparo manual (sob demanda)
   const triggerManual = useCallback(async (customText?: string) => {
@@ -237,7 +274,7 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
 
     const questionObj: CopilotQuestion = {
       id: `manual-${Date.now()}`,
-      sessionId: 'copilot-session',
+      sessionId: currentMeetingId || 'copilot-session',
       segmentId: 'manual',
       text: questionText,
       endMs: Date.now(),
@@ -250,7 +287,7 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     });
 
     await executeCopilotSuggestion(questionText, questionObj);
-  }, [executeCopilotSuggestion]);
+  }, [executeCopilotSuggestion, currentMeetingId]);
 
   // Cancelar geração
   const cancelGeneration = useCallback(() => {
@@ -261,6 +298,7 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   // Limpar estado
   const clearState = useCallback(() => {
     cancelGeneration();
+    processedSegmentIdsRef.current.clear();
     setCurrentQuestion(null);
     setEvidence([]);
     setStreamingAnswer('');

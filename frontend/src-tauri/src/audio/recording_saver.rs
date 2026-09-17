@@ -129,6 +129,7 @@ impl RecordingSaver {
             display_time: "[00:00]".to_string(),
             confidence: 1.0,
             sequence_id: 0,
+            source: None,
         };
         self.add_transcript_segment(segment);
     }

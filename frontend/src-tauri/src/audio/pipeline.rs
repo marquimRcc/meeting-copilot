@@ -830,9 +830,12 @@ impl AudioPipeline {
         let avg_mic_rms = total_mic_rms / count as f32;
         let avg_sys_rms = total_sys_rms / count as f32;
 
-        let detected = if avg_mic_rms > avg_sys_rms * 1.2 && avg_mic_rms > 0.003 {
+        let detected = if avg_mic_rms > 0.003 && avg_mic_rms >= avg_sys_rms * 0.4 {
+            // User voice is actively present in the microphone (including cross-talk):
+            // Prioritize Microphone so user speech is NEVER misattributed as remote participant
             DeviceType::Microphone
-        } else if avg_sys_rms > avg_mic_rms * 1.1 && avg_sys_rms > 0.002 {
+        } else if avg_sys_rms > 0.002 {
+            // Clear remote audio with quiet microphone:
             DeviceType::System
         } else if avg_mic_rms > avg_sys_rms {
             DeviceType::Microphone
