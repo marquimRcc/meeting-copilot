@@ -820,7 +820,7 @@ impl AudioPipeline {
         if count == 0 {
             // Fallback: check recent window energy if available
             if let Some(last) = self.energy_history.back() {
-                if last.mic_rms > last.sys_rms * 1.2 && last.mic_rms > 0.003 {
+                if last.mic_rms > 0.008 || (last.mic_rms > 0.003 && last.mic_rms > last.sys_rms * 0.15) {
                     return DeviceType::Microphone;
                 }
             }
@@ -830,12 +830,15 @@ impl AudioPipeline {
         let avg_mic_rms = total_mic_rms / count as f32;
         let avg_sys_rms = total_sys_rms / count as f32;
 
-        let detected = if avg_mic_rms > 0.003 && avg_mic_rms >= avg_sys_rms * 0.4 {
-            // User voice is actively present in the microphone (including cross-talk):
+        let detected = if avg_mic_rms > 0.008 {
+            // Unambiguous local microphone speech (user speaking clearly):
             // Prioritize Microphone so user speech is NEVER misattributed as remote participant
             DeviceType::Microphone
+        } else if avg_mic_rms > 0.003 && avg_mic_rms > avg_sys_rms * 0.15 {
+            // Active microphone speech (including moderate cross-talk above acoustic bleed):
+            DeviceType::Microphone
         } else if avg_sys_rms > 0.002 {
-            // Clear remote audio with quiet microphone:
+            // Clear remote participant audio with quiet microphone:
             DeviceType::System
         } else if avg_mic_rms > avg_sys_rms {
             DeviceType::Microphone

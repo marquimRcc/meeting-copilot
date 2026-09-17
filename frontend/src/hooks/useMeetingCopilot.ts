@@ -47,9 +47,9 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const indexRef = useRef<BM25Index>(new BM25Index(defaultDocuments));
   const assistantRef = useRef<CopilotAssistantService>(new CopilotAssistantService());
 
-  // Rastreamento de sessão e segmentos processados (suporte a lotes e isolamento)
+  // Rastreamento de sessão e segmentos processados (suporte a lotes, correções e isolamento)
   const lastMeetingIdRef = useRef<string | null>(currentMeetingId);
-  const processedSegmentIdsRef = useRef<Set<string>>(new Set());
+  const processedSegmentsRef = useRef<Map<string, string>>(new Map());
 
   // Refs de estado para callbacks e atalhos
   const isAutoTriggerRef = useRef(isAutoTrigger);
@@ -175,9 +175,9 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     // 1. Detecta troca de reunião para garantir isolamento estrito de contexto
     if (currentMeetingId !== lastMeetingIdRef.current) {
       lastMeetingIdRef.current = currentMeetingId;
-      processedSegmentIdsRef.current.clear();
+      processedSegmentsRef.current.clear();
       assistantRef.current.cancel();
-      bufferRef.current.clear();
+      bufferRef.current = new TranscriptBuffer(currentMeetingId || 'copilot-session');
       detectorRef.current.clear();
       setIsGenerating(false);
       setStreamingAnswer('');
@@ -188,9 +188,9 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
 
     // 2. Quando a lista de transcrições é limpa
     if (!transcripts || transcripts.length === 0) {
-      processedSegmentIdsRef.current.clear();
+      processedSegmentsRef.current.clear();
       assistantRef.current.cancel();
-      bufferRef.current.clear();
+      bufferRef.current = new TranscriptBuffer(currentMeetingId || 'copilot-session');
       detectorRef.current.clear();
       setIsGenerating(false);
       setStreamingAnswer('');
@@ -201,19 +201,27 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
 
     const isLoopbackOnly = selectedDevices?.micDevice === 'none';
 
-    // 3. Processa todos os novos segmentos recebidos (inclusive múltiplos em lote)
+    // 3. Processa todos os novos segmentos recebidos (inclusive múltiplos em lote e correções)
     for (let i = 0; i < transcripts.length; i++) {
       const t = transcripts[i];
       if (!t) continue;
 
+      // Validação estrita de isolamento de sessão:
+      // Se o evento possuir meeting_id de outra sessão, descarta imediatamente (evita eventos atrasados)
+      if (t.meeting_id && currentMeetingId && t.meeting_id !== currentMeetingId) {
+        continue;
+      }
+
       const segId = t.id || String(t.sequence_id ?? i);
 
-      // Pula se já foi processado como final
-      if (processedSegmentIdsRef.current.has(segId) && !t.is_partial) {
+      // Suporte a correções tardias de texto:
+      // Pula apenas se o segmento já foi processado como final E o texto não sofreu alteração
+      const prevText = processedSegmentsRef.current.get(segId);
+      if (prevText === t.text && !t.is_partial) {
         continue;
       }
       if (!t.is_partial) {
-        processedSegmentIdsRef.current.add(segId);
+        processedSegmentsRef.current.set(segId, t.text);
       }
 
       // Precedência estrita de canal:
@@ -298,14 +306,14 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   // Limpar estado
   const clearState = useCallback(() => {
     cancelGeneration();
-    processedSegmentIdsRef.current.clear();
+    processedSegmentsRef.current.clear();
     setCurrentQuestion(null);
     setEvidence([]);
     setStreamingAnswer('');
     setError(null);
-    bufferRef.current.clear();
+    bufferRef.current = new TranscriptBuffer(currentMeetingId || 'copilot-session');
     detectorRef.current.clear();
-  }, [cancelGeneration]);
+  }, [cancelGeneration, currentMeetingId]);
 
   // Registro de atalho global de teclado (Alt + Q)
   useEffect(() => {

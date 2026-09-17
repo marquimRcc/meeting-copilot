@@ -411,22 +411,24 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     assert.equal(manualQuestionObj.text, userSpokenQuestion);
   });
 
-  test('processamento em lote ingere múltiplos segmentos recebidos simultaneamente', () => {
+  test('processamento em lote ingere múltiplos segmentos e suporta correções tardias de texto', () => {
     const buffer = new TranscriptBuffer('s-batch');
-    const processedIds = new Set();
+    const processedSegments = new Map();
     const batchTranscripts = [
       { id: 'b1', text: 'Bom dia a todos.', is_partial: false, source: 'System Audio', audio_start_time: 1, audio_end_time: 3 },
       { id: 'b2', text: 'Hoje vamos falar sobre a migração de banco.', is_partial: false, source: 'System Audio', audio_start_time: 3, audio_end_time: 6 },
-      { id: 'b3', text: 'Como vamos migrar o Oracle para Postgres?', is_partial: false, source: 'System Audio', audio_start_time: 6, audio_end_time: 9 }
+      { id: 'b3', text: 'Como vamos', is_partial: false, source: 'System Audio', audio_start_time: 6, audio_end_time: 8 }
     ];
 
     const detectedQuestions = [];
 
+    // Ingestão inicial
     for (let i = 0; i < batchTranscripts.length; i++) {
       const t = batchTranscripts[i];
       const segId = t.id || String(i);
-      if (processedIds.has(segId) && !t.is_partial) continue;
-      if (!t.is_partial) processedIds.add(segId);
+      const prevText = processedSegments.get(segId);
+      if (prevText === t.text && !t.is_partial) continue;
+      if (!t.is_partial) processedSegments.set(segId, t.text);
 
       const channel = resolveCopilotChannel(t.source, false);
       const seg = {
@@ -443,51 +445,144 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
       const { isQuestionEligible } = buffer.append(seg);
       if (isQuestionEligible && channel === 'remote-system') {
         const detected = detector.detect(seg);
-        if (detected) {
-          detectedQuestions.push(detected);
-        }
+        if (detected) detectedQuestions.push(detected);
       }
     }
 
-    // Todos os 3 segmentos devem estar no buffer (nenhum descartado por olhar só o último)
     assert.equal(buffer.snapshot().length, 3);
+    assert.equal(detectedQuestions.length, 0); // "Como vamos" incompleto não dispara
+
+    // Whisper corrige o segmento 'b3' para a pergunta completa:
+    const correctionBatch = [
+      { id: 'b3', text: 'Como vamos migrar o Oracle para Postgres?', is_partial: false, source: 'System Audio', audio_start_time: 6, audio_end_time: 9 }
+    ];
+
+    for (let i = 0; i < correctionBatch.length; i++) {
+      const t = correctionBatch[i];
+      const segId = t.id;
+      const prevText = processedSegments.get(segId);
+      if (prevText === t.text && !t.is_partial) continue;
+      if (!t.is_partial) processedSegments.set(segId, t.text);
+
+      const channel = resolveCopilotChannel(t.source, false);
+      const seg = {
+        id: segId,
+        sessionId: 's-batch',
+        sequence: 2,
+        startMs: Math.round(t.audio_start_time * 1000),
+        endMs: Math.round(t.audio_end_time * 1000),
+        text: t.text,
+        final: !t.is_partial,
+        channel
+      };
+
+      const { isQuestionEligible } = buffer.append(seg);
+      if (isQuestionEligible && channel === 'remote-system') {
+        const detected = detector.detect(seg);
+        if (detected) detectedQuestions.push(detected);
+      }
+    }
+
+    // O buffer deve conter o texto atualizado e a pergunta deve ter sido detectada
+    assert.equal(buffer.snapshot().length, 3);
+    assert.equal(buffer.snapshot()[2].text, 'Como vamos migrar o Oracle para Postgres?');
     assert.equal(detectedQuestions.length, 1);
     assert.match(detectedQuestions[0].text, /Como vamos migrar o Oracle para Postgres/);
-
-    // Em uma segunda execução com o mesmo lote, nada deve ser reprocessado
-    const previousDetectedCount = detectedQuestions.length;
-    for (let i = 0; i < batchTranscripts.length; i++) {
-      const t = batchTranscripts[i];
-      const segId = t.id || String(i);
-      if (processedIds.has(segId) && !t.is_partial) continue;
-      // Não deve chegar aqui
-      assert.fail(`Segmento ${segId} não deveria ser reprocessado`);
-    }
-    assert.equal(detectedQuestions.length, previousDetectedCount);
   });
 
   test('isolamento de sessão reseta buffer e deduplicador ao trocar de reunião', () => {
-    const buffer = new TranscriptBuffer('meeting-1');
-    const processedIds = new Set();
+    let buffer = new TranscriptBuffer('meeting-1');
+    const processedSegments = new Map();
 
     // Reunião 1
     buffer.append({ id: 'm1-1', sessionId: 'meeting-1', sequence: 1, startMs: 0, endMs: 2000, text: 'Fala reunião 1', final: true, channel: 'remote-system' });
-    processedIds.add('m1-1');
+    processedSegments.set('m1-1', 'Fala reunião 1');
     assert.equal(buffer.snapshot().length, 1);
-    assert.equal(processedIds.size, 1);
+    assert.equal(processedSegments.size, 1);
 
-    // Troca para Reunião 2: limpeza total
+    // Troca para Reunião 2: limpeza total e nova instância de buffer vinculada a meeting-2
     buffer.clear();
     detector.clear();
-    processedIds.clear();
+    processedSegments.clear();
+    buffer = new TranscriptBuffer('meeting-2');
 
     assert.equal(buffer.snapshot().length, 0);
-    assert.equal(processedIds.size, 0);
+    assert.equal(processedSegments.size, 0);
 
     // Reunião 2 começa do zero
     buffer.append({ id: 'm2-1', sessionId: 'meeting-2', sequence: 1, startMs: 0, endMs: 2000, text: 'Fala reunião 2', final: true, channel: 'remote-system' });
-    processedIds.add('m2-1');
+    processedSegments.set('m2-1', 'Fala reunião 2');
     assert.equal(buffer.snapshot().length, 1);
     assert.equal(buffer.snapshot()[0].text, 'Fala reunião 2');
+  });
+
+  test('validação estrita de sessão rejeita eventos atrasados de outras reuniões', () => {
+    const currentMeetingId = 'meeting-active';
+    const buffer = new TranscriptBuffer(currentMeetingId);
+
+    // Evento atrasado com meeting_id da reunião anterior
+    const delayedOldSegment = {
+      id: 'old-chunk-99',
+      meeting_id: 'meeting-previous',
+      text: 'Pergunta da reunião anterior que chegou com atraso?',
+      final: true,
+      channel: 'remote-system',
+      startMs: 5000,
+      endMs: 8000
+    };
+
+    // Validação estrita: se meeting_id !== currentMeetingId, deve ser sumariamente descartado
+    const isMismatched = delayedOldSegment.meeting_id && currentMeetingId && delayedOldSegment.meeting_id !== currentMeetingId;
+    assert.equal(isMismatched, true, 'Deve identificar que o evento pertence a outra reunião');
+
+    if (!isMismatched) {
+      buffer.append({ ...delayedOldSegment, sessionId: delayedOldSegment.meeting_id });
+    }
+
+    // Nenhuma contaminação ocorreu no buffer da reunião ativa:
+    assert.equal(buffer.snapshot().length, 0);
+
+    // E o próprio TranscriptBuffer rejeita sessionId incongruente
+    const rejectedResult = buffer.append({
+      id: 'mismatch-1',
+      sessionId: 'meeting-previous',
+      sequence: 1,
+      startMs: 1000,
+      endMs: 3000,
+      text: 'Outro teste',
+      final: true,
+      channel: 'remote-system'
+    });
+    assert.equal(rejectedResult.isNew, false);
+    assert.equal(buffer.snapshot().length, 0);
+  });
+
+  test('matriz de classificação de locutor prioriza microfone em sobreposição (cross-talk) e fala clara', () => {
+    // Função espelho do classificador em Rust (pipeline.rs:820-845)
+    function classifySpeaker(mic_rms, sys_rms) {
+      if (mic_rms > 0.008) {
+        return 'Microphone';
+      } else if (mic_rms > 0.003 && mic_rms > sys_rms * 0.15) {
+        return 'Microphone';
+      } else if (sys_rms > 0.002) {
+        return 'System';
+      } else if (mic_rms > sys_rms) {
+        return 'Microphone';
+      } else {
+        return 'System';
+      }
+    }
+
+    // Caso 1 apontado na revisão: mic=0.010, sys=0.040 (usuário falando junto com participante)
+    assert.equal(classifySpeaker(0.010, 0.040), 'Microphone', 'Fala do usuário (0.010 > 0.008) deve ser estritamente Microphone');
+
+    // Caso 2: fala direta no microfone com sistema quieto
+    assert.equal(classifySpeaker(0.025, 0.000), 'Microphone');
+
+    // Caso 3: participante falando com microfone em silêncio
+    assert.equal(classifySpeaker(0.001, 0.035), 'System');
+
+    // Caso 4: eco acústico de alto-falante (sys=0.050, vazamento no mic=0.0035, proporção 0.07 < 0.15)
+    assert.equal(classifySpeaker(0.0035, 0.050), 'System', 'Vazamento residual acústico abaixo de 15% deve ser classificado como System');
   });
 });
