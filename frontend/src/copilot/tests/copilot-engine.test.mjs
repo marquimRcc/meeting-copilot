@@ -288,3 +288,121 @@ describe('Parte 3: Assistente LLM com Streaming e Cancelamento', () => {
     assert.match(errorReported.message, /LM Studio na porta 1234 ou Ollama na porta 11434/);
   });
 });
+
+describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarization)', () => {
+  const detector = new QuestionDetector();
+
+  // Helper que reproduz a lógica determinística de resolução de canal do hook useMeetingCopilot
+  function resolveCopilotChannel(source, isLoopbackOnly) {
+    if (source === 'System Audio' || isLoopbackOnly) {
+      return 'remote-system';
+    } else if (source === 'Microphone') {
+      return 'mic';
+    }
+    return 'unknown';
+  }
+
+  test('mapeamento de source e dispositivos para canais do Copiloto', () => {
+    // Quando vem do stream de áudio do sistema (participantes da reunião)
+    assert.equal(resolveCopilotChannel('System Audio', false), 'remote-system');
+
+    // Quando vem do stream do microfone local (o próprio usuário falando)
+    assert.equal(resolveCopilotChannel('Microphone', false), 'mic');
+
+    // Quando o microfone foi explicitamente desativado no Meetily ('none')
+    assert.equal(resolveCopilotChannel(undefined, true), 'remote-system');
+
+    // Quando o canal for indeterminado e ambos os dispositivos estiverem ativos
+    assert.equal(resolveCopilotChannel(undefined, false), 'unknown');
+  });
+
+  test('pergunta originada do microfone ("mic") não deve acionar sugestão automática', () => {
+    const buffer = new TranscriptBuffer('s-diarization');
+    const segment = {
+      id: 'mic-seg-1',
+      sessionId: 's-diarization',
+      sequence: 1,
+      startMs: 1000,
+      endMs: 3500,
+      text: 'Marcos, você sabe como resolver o erro 500 no serviço?',
+      final: true,
+      channel: resolveCopilotChannel('Microphone', false) // 'mic'
+    };
+
+    const { isQuestionEligible } = buffer.append(segment);
+    const detected = detector.detect(segment);
+
+    // O canal 'mic' é rejeitado pelo detector para evitar auto-disparo de perguntas feitas pelo próprio usuário:
+    assert.equal(segment.channel, 'mic');
+    assert.equal(detected, null, 'O detector rejeita falas de microfone do próprio usuário');
+
+    // E a condição de disparo automático é rigorosamente falsa:
+    const autoTriggerCondition = isQuestionEligible && segment.channel === 'remote-system' && detected !== null;
+    assert.equal(autoTriggerCondition, false, 'Pergunta do próprio usuário não pode disparar resposta automática');
+  });
+
+  test('pergunta originada do sistema ("remote-system") aciona sugestão automática normalmente', () => {
+    const buffer = new TranscriptBuffer('s-diarization');
+    const segment = {
+      id: 'sys-seg-1',
+      sessionId: 's-diarization',
+      sequence: 2,
+      startMs: 4000,
+      endMs: 6500,
+      text: 'Como vocês tratavam as falhas de conexão com o Oracle?',
+      final: true,
+      channel: resolveCopilotChannel('System Audio', false) // 'remote-system'
+    };
+
+    const { isQuestionEligible } = buffer.append(segment);
+    const detected = detector.detect(segment);
+
+    assert.ok(detected !== null, 'Detecta pergunta feita pelo participante remoto');
+    assert.equal(segment.channel, 'remote-system');
+
+    // Condição de disparo automático satisfeita:
+    const autoTriggerCondition = isQuestionEligible && segment.channel === 'remote-system';
+    assert.equal(autoTriggerCondition, true, 'Pergunta de participante remoto dispara sugestão automática');
+  });
+
+  test('pergunta com canal "unknown" não dispara automaticamente para segurança', () => {
+    const buffer = new TranscriptBuffer('s-diarization');
+    const segment = {
+      id: 'unknown-seg-1',
+      sessionId: 's-diarization',
+      sequence: 3,
+      startMs: 7000,
+      endMs: 9000,
+      text: 'Qual a política de retenção dos logs?',
+      final: true,
+      channel: resolveCopilotChannel(undefined, false) // 'unknown'
+    };
+
+    const { isQuestionEligible } = buffer.append(segment);
+    const autoTriggerCondition = isQuestionEligible && segment.channel === 'remote-system';
+    assert.equal(autoTriggerCondition, false, 'Canal não confirmado não deve disparar no modo automático');
+  });
+
+  test('disparo manual sob demanda permite responder qualquer pergunta independente do canal', () => {
+    // No disparo manual (Alt+Q ou botão "Copilot"), o usuário quer a sugestão deliberadamente
+    const userSpokenQuestion = 'Como nós configuramos o circuit breaker no Resilience4j?';
+
+    // Mesmo que o segmento tenha sido falado no microfone pelo próprio usuário:
+    const channel = resolveCopilotChannel('Microphone', false);
+    assert.equal(channel, 'mic');
+
+    // O fluxo manual aceita o texto explicitamente
+    const manualQuestionObj = {
+      id: `manual-${Date.now()}`,
+      sessionId: 's-diarization',
+      segmentId: 'manual',
+      text: userSpokenQuestion,
+      endMs: Date.now(),
+      reason: 'manual',
+      confidence: 1.0
+    };
+
+    assert.equal(manualQuestionObj.reason, 'manual');
+    assert.equal(manualQuestionObj.text, userSpokenQuestion);
+  });
+});

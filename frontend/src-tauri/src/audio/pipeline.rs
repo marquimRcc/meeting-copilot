@@ -688,6 +688,15 @@ impl AudioCapture {
     }
 }
 
+/// Window energy record for speaker diarization (microphone vs system audio)
+#[derive(Debug, Clone)]
+struct WindowEnergyRecord {
+    start_ms: f64,
+    end_ms: f64,
+    mic_rms: f32,
+    sys_rms: f32,
+}
+
 /// VAD-driven audio processing pipeline
 /// Uses Voice Activity Detection to segment speech in real-time and send only speech to Whisper
 pub struct AudioPipeline {
@@ -707,6 +716,9 @@ pub struct AudioPipeline {
     mixer: ProfessionalAudioMixer,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
+    // Speaker Diarization: track channel energy over time
+    energy_history: VecDeque<WindowEnergyRecord>,
+    total_mixed_samples: usize,
 }
 
 impl AudioPipeline {
@@ -785,7 +797,55 @@ impl AudioPipeline {
             ring_buffer,
             mixer,
             recording_sender_for_mixed: None,  // Will be set by manager
+            energy_history: VecDeque::with_capacity(1200),
+            total_mixed_samples: 0,
         })
+    }
+
+    /// Classifies whether a speech segment originated predominantly from the microphone or system audio
+    fn classify_segment_speaker(&self, start_ms: f64, end_ms: f64) -> DeviceType {
+        let mut total_mic_rms = 0.0f32;
+        let mut total_sys_rms = 0.0f32;
+        let mut count = 0usize;
+
+        for rec in self.energy_history.iter() {
+            // Check if this window overlaps with the speech segment
+            if rec.end_ms >= start_ms && rec.start_ms <= end_ms {
+                total_mic_rms += rec.mic_rms;
+                total_sys_rms += rec.sys_rms;
+                count += 1;
+            }
+        }
+
+        if count == 0 {
+            // Fallback: check recent window energy if available
+            if let Some(last) = self.energy_history.back() {
+                if last.mic_rms > last.sys_rms * 1.2 && last.mic_rms > 0.003 {
+                    return DeviceType::Microphone;
+                }
+            }
+            return DeviceType::System;
+        }
+
+        let avg_mic_rms = total_mic_rms / count as f32;
+        let avg_sys_rms = total_sys_rms / count as f32;
+
+        let detected = if avg_mic_rms > avg_sys_rms * 1.2 && avg_mic_rms > 0.003 {
+            DeviceType::Microphone
+        } else if avg_sys_rms > avg_mic_rms * 1.1 && avg_sys_rms > 0.002 {
+            DeviceType::System
+        } else if avg_mic_rms > avg_sys_rms {
+            DeviceType::Microphone
+        } else {
+            DeviceType::System
+        };
+
+        info!(
+            "🎙️ Speaker Diarization: segment [{:.1}ms - {:.1}ms] classified as {:?} (avg_mic_rms={:.5}, avg_sys_rms={:.5}, windows={})",
+            start_ms, end_ms, detected, avg_mic_rms, avg_sys_rms, count
+        );
+
+        detected
     }
 
     /// Run the VAD-driven audio processing pipeline
@@ -847,6 +907,39 @@ impl AudioPipeline {
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
                     while self.ring_buffer.can_mix() {
                         if let Some((mic_window, sys_window)) = self.ring_buffer.extract_window() {
+                            // Calculate RMS energy of each channel before mixing
+                            let mic_rms = if !mic_window.is_empty() {
+                                (mic_window.iter().map(|&x| x * x).sum::<f32>() / mic_window.len() as f32).sqrt()
+                            } else {
+                                0.0
+                            };
+                            let sys_rms = if !sys_window.is_empty() {
+                                (sys_window.iter().map(|&x| x * x).sum::<f32>() / sys_window.len() as f32).sqrt()
+                            } else {
+                                0.0
+                            };
+
+                            let window_len = mic_window.len();
+                            let start_ms = (self.total_mixed_samples as f64 / self.sample_rate as f64) * 1000.0;
+                            let end_ms = ((self.total_mixed_samples + window_len) as f64 / self.sample_rate as f64) * 1000.0;
+                            self.total_mixed_samples += window_len;
+
+                            self.energy_history.push_back(WindowEnergyRecord {
+                                start_ms,
+                                end_ms,
+                                mic_rms,
+                                sys_rms,
+                            });
+
+                            // Keep history bounded to the last 60 seconds of audio
+                            while let Some(front) = self.energy_history.front() {
+                                if end_ms - front.end_ms > 60000.0 {
+                                    self.energy_history.pop_front();
+                                } else {
+                                    break;
+                                }
+                            }
+
                             // Simple mixing without aggressive ducking
                             let mixed_clean = self.mixer.mix_window(&mic_window, &sys_window);
 
@@ -863,15 +956,20 @@ impl AudioPipeline {
                                         let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
 
                                         if segment.samples.len() >= 800 {  // Minimum 50ms at 16kHz - matches Parakeet capability
-                                            info!("📤 Sending VAD segment: {:.1}ms, {} samples",
-                                                  duration_ms, segment.samples.len());
+                                            let device_type = self.classify_segment_speaker(
+                                                segment.start_timestamp_ms,
+                                                segment.end_timestamp_ms,
+                                            );
+
+                                            info!("📤 Sending VAD segment: {:.1}ms, {} samples, device={:?}",
+                                                  duration_ms, segment.samples.len(), device_type);
 
                                             let transcription_chunk = AudioChunk {
                                                 data: segment.samples,
                                                 sample_rate: 16000,
                                                 timestamp: segment.start_timestamp_ms / 1000.0,
                                                 chunk_id: self.chunk_id_counter,
-                                                device_type: DeviceType::Microphone,  // Mixed audio
+                                                device_type,
                                             };
 
                                             if let Err(e) = self.transcription_sender.send(transcription_chunk) {
@@ -933,15 +1031,20 @@ impl AudioPipeline {
 
                     // Send segments >= 50ms (800 samples at 16kHz) - matches main pipeline filter
                     if segment.samples.len() >= 800 {
-                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples",
-                              duration_ms, segment.samples.len());
+                        let device_type = self.classify_segment_speaker(
+                            segment.start_timestamp_ms,
+                            segment.end_timestamp_ms,
+                        );
+
+                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples, device={:?}",
+                              duration_ms, segment.samples.len(), device_type);
 
                         let transcription_chunk = AudioChunk {
                             data: segment.samples,
                             sample_rate: 16000,
                             timestamp: segment.start_timestamp_ms / 1000.0,
                             chunk_id: self.chunk_id_counter,
-                            device_type: DeviceType::Microphone,
+                            device_type,
                         };
 
                         if let Err(e) = self.transcription_sender.send(transcription_chunk) {

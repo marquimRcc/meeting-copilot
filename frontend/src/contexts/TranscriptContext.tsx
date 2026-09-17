@@ -302,7 +302,11 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // Create transcript for buffer with NEW timestamp fields
+          const speaker = update.source === 'Microphone'
+            ? 'Você'
+            : (update.source === 'System Audio' ? 'Participante' : undefined);
+
+          // Create transcript for buffer with NEW timestamp fields and speaker attribution
           const newTranscript: Transcript = {
             id: `${Date.now()}-${transcriptCounter++}`,
             text: update.text,
@@ -315,6 +319,8 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             audio_start_time: update.audio_start_time,
             audio_end_time: update.audio_end_time,
             duration: update.duration,
+            source: update.source,
+            speaker,
           };
 
           // Add to buffer
@@ -383,6 +389,10 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             audio_start_time: segment.audio_start_time,
             audio_end_time: segment.audio_end_time,
             duration: segment.duration,
+            source: segment.source,
+            speaker: segment.source === 'Microphone'
+              ? 'Você'
+              : (segment.source === 'System Audio' ? 'Participante' : undefined),
           }));
 
           setTranscripts(formattedTranscripts);

@@ -181,11 +181,17 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     const last = transcripts[transcripts.length - 1];
     if (!last || last.is_partial) return;
 
-    // Atribuição de canal de áudio:
-    // Se o microfone foi desativado explicitamente ('none'), a captura contém exclusivamente loopback do sistema (outros participantes).
-    // Se o microfone estiver ativo, a fala pode ser do próprio usuário (canal 'unknown' para evitar que o usuário pergunte e o copiloto responda a ele mesmo no modo automático).
+    // Atribuição de canal de áudio baseada na diarização dual-stream:
+    // - Se source for 'System Audio' ou microfone desativado ('none'), canal é 'remote-system' (elegível para auto-trigger).
+    // - Se source for 'Microphone', canal é 'mic' (fala do próprio usuário, não dispara auto-sugestão).
+    // - Caso contrário, fallback seguro para 'unknown'.
     const isLoopbackOnly = selectedDevices?.micDevice === 'none';
-    const channel: CopilotSegment['channel'] = isLoopbackOnly ? 'remote-system' : 'unknown';
+    let channel: CopilotSegment['channel'] = 'unknown';
+    if (last.source === 'System Audio' || isLoopbackOnly) {
+      channel = 'remote-system';
+    } else if (last.source === 'Microphone') {
+      channel = 'mic';
+    }
 
     const segment: CopilotSegment = {
       id: last.id || String(last.sequence_id),
