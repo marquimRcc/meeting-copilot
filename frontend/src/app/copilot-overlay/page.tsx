@@ -15,7 +15,9 @@ import {
   ShieldCheck,
   Layers,
   RotateCcw,
-  Activity
+  Activity,
+  Volume2,
+  Mic
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -40,7 +42,9 @@ export default function CopilotOverlayPage() {
     activeModel,
     health,
     isCheckingHealth,
-    checkConnection
+    checkConnection,
+    isRemoteOnly,
+    toggleRemoteOnly
   } = useMeetingCopilot();
 
   const [isPinned, setIsPinned] = useState(true);
@@ -169,7 +173,33 @@ export default function CopilotOverlayPage() {
             {isAutoTrigger ? '⚡ Auto ON' : '⏸ Auto OFF'}
           </button>
 
-          <div className="flex gap-1 overflow-x-auto max-w-[200px] scrollbar-none">
+          <button
+            onClick={() => toggleRemoteOnly()}
+            className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center space-x-1 ${
+              isRemoteOnly
+                ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-700/60 font-medium'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+            title={
+              isRemoteOnly
+                ? 'Modo Somente Interlocutor ativo: Microfone desativado'
+                : 'Modo Padrão: Microfone e áudio do sistema'
+            }
+          >
+            {isRemoteOnly ? (
+              <>
+                <Volume2 size={10} className="text-indigo-400" />
+                <span>Chamada</span>
+              </>
+            ) : (
+              <>
+                <Mic size={10} className="text-slate-400" />
+                <span>Mic</span>
+              </>
+            )}
+          </button>
+
+          <div className="flex gap-1 overflow-x-auto max-w-[160px] scrollbar-none">
             {availableScopes.map(scope => {
               const active = scopes.includes(scope) || (scope === 'todos' && scopes.includes('todos'));
               return (

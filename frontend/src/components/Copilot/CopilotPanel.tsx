@@ -12,7 +12,9 @@ import {
   Layers,
   AlertCircle,
   ExternalLink,
-  Activity
+  Activity,
+  Volume2,
+  Mic
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -61,7 +63,9 @@ const CopilotPanelContent: React.FC<{
     activeModel,
     health,
     isCheckingHealth,
-    checkConnection
+    checkConnection,
+    isRemoteOnly,
+    toggleRemoteOnly
   } = copilot;
 
   const [copied, setCopied] = useState(false);
@@ -152,7 +156,7 @@ const CopilotPanelContent: React.FC<{
 
       {/* Barra de controle: Modo e Gatilho */}
       <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200/80 flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1.5">
           <button
             onClick={() => setIsAutoTrigger(!isAutoTrigger)}
             className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
@@ -162,7 +166,33 @@ const CopilotPanelContent: React.FC<{
             }`}
             title="Detectar perguntas automaticamente na fala remota"
           >
-            {isAutoTrigger ? '⚡ Auto: Ativado' : '⏸ Auto: Pausado'}
+            {isAutoTrigger ? '⚡ Auto' : '⏸ Pausado'}
+          </button>
+
+          <button
+            onClick={() => toggleRemoteOnly()}
+            className={`px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center space-x-1 ${
+              isRemoteOnly
+                ? 'bg-indigo-100 text-indigo-800 border border-indigo-300 font-semibold'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+            title={
+              isRemoteOnly
+                ? 'Modo Somente Interlocutor ativo: Microfone desativado, captura apenas a saída da chamada'
+                : 'Modo Padrão: Grava microfone local e áudio da chamada'
+            }
+          >
+            {isRemoteOnly ? (
+              <>
+                <Volume2 size={11} className="text-indigo-600" />
+                <span>Chamada</span>
+              </>
+            ) : (
+              <>
+                <Mic size={11} className="text-gray-500" />
+                <span>Mic+Chamada</span>
+              </>
+            )}
           </button>
         </div>
 

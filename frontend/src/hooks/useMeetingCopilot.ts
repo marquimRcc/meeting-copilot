@@ -35,11 +35,13 @@ export interface UseMeetingCopilotReturn {
   health: HealthCheckResult | null;
   isCheckingHealth: boolean;
   checkConnection: () => Promise<HealthCheckResult>;
+  isRemoteOnly: boolean;
+  toggleRemoteOnly: () => Promise<void>;
 }
 
 export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const { transcripts, currentMeetingId } = useTranscripts();
-  const { modelConfig, providerApiKeys, selectedDevices } = useConfig();
+  const { modelConfig, providerApiKeys, selectedDevices, setSelectedDevices } = useConfig();
 
   const [currentQuestion, setCurrentQuestion] = useState<CopilotQuestion | null>(null);
   const [evidence, setEvidence] = useState<EvidenceMatch[]>([]);
@@ -50,6 +52,43 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const [isAutoTrigger, setIsAutoTrigger] = useState<boolean>(false);
   const [health, setHealth] = useState<HealthCheckResult | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
+
+  // Modo Somente Interlocutor (grava apenas a saída do áudio sem abrir microfone)
+  const isRemoteOnly = selectedDevices?.micDevice === 'none';
+  const lastRealMicRef = useRef<string | null>(selectedDevices?.micDevice !== 'none' ? selectedDevices?.micDevice || null : null);
+  useEffect(() => {
+    if (selectedDevices?.micDevice && selectedDevices.micDevice !== 'none') {
+      lastRealMicRef.current = selectedDevices.micDevice;
+    }
+  }, [selectedDevices?.micDevice]);
+
+  const toggleRemoteOnly = useCallback(async () => {
+    const nextMic = isRemoteOnly ? (lastRealMicRef.current || null) : 'none';
+    const nextDevices = {
+      ...selectedDevices,
+      micDevice: nextMic
+    };
+    setSelectedDevices(nextDevices);
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('set_recording_preferences', {
+        preferences: {
+          preferred_mic_device: nextMic,
+          preferred_system_device: selectedDevices?.systemDevice || null,
+          auto_save: true
+        }
+      });
+    } catch {
+      // Ignorar fallback fora do Tauri
+    }
+
+    if (nextMic === 'none') {
+      toast.info('Modo Somente Interlocutor ativado (Microfone desativado)');
+    } else {
+      toast.info('Modo Padrão ativado (Microfone e áudio do sistema)');
+    }
+  }, [isRemoteOnly, selectedDevices, setSelectedDevices]);
 
   // Instâncias singleton de processamento
   const bufferRef = useRef<TranscriptBuffer>(new TranscriptBuffer(currentMeetingId || 'copilot-session'));
@@ -421,6 +460,8 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     activeModel,
     health,
     isCheckingHealth,
-    checkConnection
+    checkConnection,
+    isRemoteOnly,
+    toggleRemoteOnly
   };
 }
