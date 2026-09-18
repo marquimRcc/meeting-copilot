@@ -155,6 +155,9 @@ export function useRecordingStart(
       // Set STARTING status before initiating backend recording
       setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
+      // Clear previous transcripts BEFORE initiating backend recording
+      clearTranscripts();
+
       // Start the actual backend recording
       console.log('Starting backend recording with meeting:', randomTitle);
       await recordingService.startRecordingWithDevices(
@@ -168,7 +171,6 @@ export function useRecordingStart(
       // Note: RECORDING status will be set by RecordingStateContext event listener
       console.log('Setting isRecordingState to true');
       setIsRecording(true); // This will also update the sidebar via the useEffect
-      clearTranscripts(); // Clear previous transcripts when starting new recording
       setIsMeetingActive(true);
       Analytics.trackButtonClick('start_recording', 'home_page');
 
@@ -189,6 +191,7 @@ export function useRecordingStart(
         return;
       }
 
+      clearTranscripts(); // Keep session inactive on error
       const isRuntimeError = isTranscriptionRuntimeStartError(error);
       if (errorMsg.includes('Recording start timed out')) {
         toast.error('Recording start timed out — please try again');
@@ -198,6 +201,7 @@ export function useRecordingStart(
         ? TRANSCRIPTION_RUNTIME_USER_MESSAGE
         : errorMsg);
       setIsRecording(false); // Reset state on error
+      setIsMeetingActive(false);
       Analytics.trackButtonClick('start_recording_error', 'home_page');
       if (isRuntimeError) return;
       // Re-throw so RecordingControls can handle device-specific errors
@@ -248,6 +252,9 @@ export function useRecordingStart(
             // Set STARTING status before initiating backend recording
             setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
+            // Clear previous transcripts BEFORE initiating backend recording
+            clearTranscripts();
+
             console.log('Auto-starting backend recording with meeting:', generatedMeetingTitle);
             const result = await recordingService.startRecordingWithDevices(
               selectedDevices?.micDevice || null,
@@ -260,7 +267,6 @@ export function useRecordingStart(
             // Note: RECORDING status will be set by RecordingStateContext event listener
             setMeetingTitle(generatedMeetingTitle);
             setIsRecording(true);
-            clearTranscripts();
             setIsMeetingActive(true);
             Analytics.trackButtonClick('start_recording', 'sidebar_auto');
 
@@ -273,6 +279,9 @@ export function useRecordingStart(
               // Benign race — another start won and is live; skip ERROR/alert.
               setStatus(RecordingStatus.RECORDING);
             } else {
+              clearTranscripts(); // Keep session inactive on error
+              setIsRecording(false);
+              setIsMeetingActive(false);
               const isRuntimeError = isTranscriptionRuntimeStartError(error);
               setStatus(RecordingStatus.ERROR, isRuntimeError
                 ? TRANSCRIPTION_RUNTIME_USER_MESSAGE
@@ -346,6 +355,9 @@ export function useRecordingStart(
         // Set STARTING status before initiating backend recording
         setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
+        // Clear previous transcripts BEFORE initiating backend recording
+        clearTranscripts();
+
         console.log('Starting backend recording with meeting:', generatedMeetingTitle);
         const result = await recordingService.startRecordingWithDevices(
           selectedDevices?.micDevice || null,
@@ -358,7 +370,6 @@ export function useRecordingStart(
         // Note: RECORDING status will be set by RecordingStateContext event listener
         setMeetingTitle(generatedMeetingTitle);
         setIsRecording(true);
-        clearTranscripts();
         setIsMeetingActive(true);
         Analytics.trackButtonClick('start_recording', 'sidebar_direct');
 
@@ -371,6 +382,9 @@ export function useRecordingStart(
           // Benign race — another start won and is live; skip ERROR/alert.
           setStatus(RecordingStatus.RECORDING);
         } else {
+          clearTranscripts(); // Keep session inactive on error
+          setIsRecording(false);
+          setIsMeetingActive(false);
           const isRuntimeError = isTranscriptionRuntimeStartError(error);
           setStatus(RecordingStatus.ERROR, isRuntimeError
             ? TRANSCRIPTION_RUNTIME_USER_MESSAGE

@@ -65,7 +65,7 @@ interface SidebarContextType {
 
 }
 
-const SidebarContext = createContext<SidebarContextType | null>(null);
+export const SidebarContext = createContext<SidebarContextType | null>(null);
 
 export const useSidebar = () => {
   const context = useContext(SidebarContext);

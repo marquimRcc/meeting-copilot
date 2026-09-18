@@ -94,7 +94,7 @@ interface ConfigContextType {
   updateNotificationSettings: (settings: NotificationSettings) => Promise<void>;
 }
 
-const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
+export const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 
 export function ConfigProvider({ children }: { children: ReactNode }) {

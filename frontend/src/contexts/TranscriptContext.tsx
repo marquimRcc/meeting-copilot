@@ -8,7 +8,7 @@ import { transcriptService } from '@/services/transcriptService';
 import { recordingService } from '@/services/recordingService';
 import { indexedDBService } from '@/services/indexedDBService';
 
-interface TranscriptContextType {
+export interface TranscriptContextType {
   transcripts: Transcript[];
   transcriptsRef: MutableRefObject<Transcript[]>
   addTranscript: (update: TranscriptUpdate) => void;
@@ -18,6 +18,8 @@ interface TranscriptContextType {
   meetingTitle: string;
   setMeetingTitle: (title: string) => void;
   clearTranscripts: () => void;
+  clearTranscriptList: () => void;
+  clearActiveSession: () => void;
   currentMeetingId: string | null;
   markMeetingAsSaved: () => Promise<void>;
 }
@@ -155,6 +157,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             const stoppedMeetingId = activeMeetingIdRef.current || currentMeetingId;
             isRecordingActiveRef.current = false;
             activeMeetingIdRef.current = null;
+            setCurrentMeetingId(null);
 
             if (stoppedMeetingId) {
               // Update folder path in IndexedDB
@@ -337,7 +340,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
           }
 
           // 2. Reject updates from previous or different meetings
-          if (update.meeting_id && update.meeting_id !== activeMeetingIdRef.current) {
+          if (update.meeting_id !== activeMeetingIdRef.current) {
             console.log('🚫 MAIN LISTENER: Dropping transcript update from different meeting:', update.meeting_id, 'expected:', activeMeetingIdRef.current);
             return;
           }
@@ -426,13 +429,46 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       // If recording is active and we have no local transcripts, sync from backend
       if (recordingState.isRecording && transcripts.length === 0) {
         try {
-          console.log('[Reload Sync] Recording active after reload, syncing transcript history...');
+          console.log('[Reload Sync] Recording active after reload, retrieving active session ID...');
 
-          // Fetch transcript history from backend
+          // 1. Recover active meeting ID: prefer backend, fallback to sessionStorage
+          let restoredMeetingId: string | null = null;
+          try {
+            restoredMeetingId = await recordingService.getCurrentMeetingId();
+          } catch (e) {
+            console.warn('[Reload Sync] Failed to get meeting ID from getCurrentMeetingId:', e);
+          }
+
+          if (!restoredMeetingId && (recordingState as any).meeting_id) {
+            restoredMeetingId = (recordingState as any).meeting_id;
+          }
+
+          if (!restoredMeetingId && typeof window !== 'undefined') {
+            restoredMeetingId = sessionStorage.getItem('indexeddb_current_meeting_id');
+            if (restoredMeetingId) {
+              console.log('[Reload Sync] Restored meeting ID from sessionStorage fallback:', restoredMeetingId);
+            }
+          }
+
+          if (!restoredMeetingId) {
+            console.error('[Reload Sync] ❌ Recording is active but no meeting_id could be retrieved from backend or sessionStorage. Dropping sync.');
+            return;
+          }
+
+          // 2. Restore active session BEFORE loading history or accepting new events
+          activeMeetingIdRef.current = restoredMeetingId;
+          isRecordingActiveRef.current = true;
+          setCurrentMeetingId(restoredMeetingId);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('indexeddb_current_meeting_id', restoredMeetingId);
+          }
+          console.log(`[Reload Sync] Restored active session: ${restoredMeetingId}`);
+
+          // 3. Fetch transcript history from backend
           const history = await transcriptService.getTranscriptHistory();
           console.log(`[Reload Sync] Retrieved ${history.length} transcript segments from backend`);
 
-          // Convert backend format to frontend Transcript format
+          // 4. Convert backend format to frontend Transcript format with restoredMeetingId
           const formattedTranscripts: Transcript[] = history.map((segment: any) => ({
             id: segment.id,
             text: segment.text,
@@ -448,13 +484,13 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             speaker: segment.source === 'Microphone'
               ? 'Você'
               : (segment.source === 'System Audio' ? 'Participante' : undefined),
-            meeting_id: currentMeetingId || undefined,
+            meeting_id: restoredMeetingId,
           }));
 
           setTranscripts(formattedTranscripts);
           console.log('[Reload Sync] ✅ Transcript history synced successfully');
 
-          // Fetch meeting name from backend
+          // 5. Fetch meeting name from backend
           const meetingName = await recordingService.getRecordingMeetingName();
           if (meetingName) {
             console.log('[Reload Sync] Retrieved meeting name:', meetingName);
@@ -485,7 +521,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (update.meeting_id && update.meeting_id !== activeId) {
+    if (update.meeting_id !== activeId) {
       console.log('🚫 addTranscript: Dropping transcript update from different meeting');
       return;
     }
@@ -556,25 +592,46 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Clear transcripts (used when starting new recording or explicitly clearing session)
-  const clearTranscripts = useCallback(() => {
+  // Clear only UI transcripts list/buffer
+  const clearTranscriptList = useCallback(() => {
     setTranscripts([]);
+    console.log('🧹 UI transcripts list cleared');
+  }, []);
+
+  // Clear active session identifiers
+  const clearActiveSession = useCallback(() => {
     activeMeetingIdRef.current = null;
     isRecordingActiveRef.current = false;
     setCurrentMeetingId(null);
-    sessionStorage.removeItem('indexeddb_current_meeting_id');
-    console.log('🧹 Transcripts and active meeting session cleared');
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('indexeddb_current_meeting_id');
+    }
+    console.log('🧹 Active meeting session cleared');
+  }, []);
+
+  // Clear transcripts (used when starting new recording or explicitly clearing session)
+  const clearTranscripts = useCallback(() => {
+    setTranscripts([]);
+    if (!isRecordingActiveRef.current) {
+      activeMeetingIdRef.current = null;
+      setCurrentMeetingId(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('indexeddb_current_meeting_id');
+      }
+      console.log('🧹 Transcripts and active meeting session cleared');
+    } else {
+      console.warn('⚠️ clearTranscripts called while recording active - preserved active session ID:', activeMeetingIdRef.current);
+    }
   }, []);
 
   // Mark current meeting as saved in IndexedDB
   const markMeetingAsSaved = useCallback(async () => {
     // Try active session first, fallback to context state and sessionStorage
-    const meetingId = activeMeetingIdRef.current || currentMeetingId || sessionStorage.getItem('indexeddb_current_meeting_id');
+    const meetingId = activeMeetingIdRef.current || currentMeetingId || (typeof window !== 'undefined' ? sessionStorage.getItem('indexeddb_current_meeting_id') : null);
 
     if (!meetingId) {
       console.error('[IndexedDB] ❌ Cannot mark meeting as saved: No meeting ID available!');
       console.error('[IndexedDB] currentMeetingId:', currentMeetingId);
-      console.error('[IndexedDB] sessionStorage:', sessionStorage.getItem('indexeddb_current_meeting_id'));
       return;
     }
 
@@ -585,7 +642,9 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       activeMeetingIdRef.current = null;
       isRecordingActiveRef.current = false;
       setCurrentMeetingId(null);
-      sessionStorage.removeItem('indexeddb_current_meeting_id');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('indexeddb_current_meeting_id');
+      }
     } catch (error) {
       console.error('[IndexedDB] ❌ Failed to mark meeting as saved:', error);
     }
@@ -601,6 +660,8 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     meetingTitle,
     setMeetingTitle,
     clearTranscripts,
+    clearTranscriptList,
+    clearActiveSession,
     currentMeetingId,
     markMeetingAsSaved,
   };

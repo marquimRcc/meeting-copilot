@@ -10,6 +10,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 export interface RecordingState {
   is_recording: boolean;
+  meeting_id?: string | null;
   is_paused: boolean;
   is_active: boolean;
   recording_duration: number | null;
@@ -78,6 +79,14 @@ export class RecordingService {
    */
   async getRecordingMeetingName(): Promise<string | null> {
     return invoke<string | null>('get_recording_meeting_name');
+  }
+
+  /**
+   * Get current active meeting ID
+   * @returns Promise<string | null>
+   */
+  async getCurrentMeetingId(): Promise<string | null> {
+    return invoke<string | null>('get_current_meeting_id');
   }
 
   /**

@@ -102,6 +102,7 @@ fn finalize_recording_start() {
 // Global recording manager and transcription task to keep them alive during recording
 static RECORDING_MANAGER: Mutex<Option<RecordingManager>> = Mutex::new(None);
 static TRANSCRIPTION_TASK: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+static CURRENT_MEETING_ID: Mutex<Option<String>> = Mutex::new(None);
 
 // Listener ID for proper cleanup - prevents microphone from staying active after recording stops
 static TRANSCRIPT_LISTENER_ID: Mutex<Option<tauri::EventId>> = Mutex::new(None);
@@ -477,6 +478,11 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         info!("✅ Transcript-update event listener registered for history persistence");
     }
 
+    {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = Some(meeting_id.clone());
+    }
+
     // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started successfully with parallel processing",
@@ -484,7 +490,11 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         "workers": 3,
         "meeting_id": meeting_id,
         "meeting_name": effective_meeting_name,
-    })).map_err(|e| e.to_string())?;
+    })).map_err(|e| {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = None;
+        e.to_string()
+    })?;
 
     // Update tray menu to reflect recording state
     crate::tray::update_tray_menu(&app);
@@ -675,6 +685,11 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         info!("✅ Transcript-update event listener registered for history persistence");
     }
 
+    {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = Some(meeting_id.clone());
+    }
+
     // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started with custom devices and parallel processing",
@@ -685,7 +700,11 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         "workers": 3,
         "meeting_id": meeting_id,
         "meeting_name": effective_meeting_name,
-    })).map_err(|e| e.to_string())?;
+    })).map_err(|e| {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = None;
+        e.to_string()
+    })?;
 
     // Update tray menu to reflect recording state
     crate::tray::update_tray_menu(&app);
@@ -1079,6 +1098,10 @@ pub async fn stop_recording<R: Runtime>(
     // Set recording flag to false
     info!("🔍 Setting IS_RECORDING to false");
     IS_RECORDING.store(false, Ordering::SeqCst);
+    {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = None;
+    }
     // IS_RECORDING_STOPPING is cleared by _stopping_guard on scope exit.
 
     // Step 4.5: Prepare metadata for frontend (NO database save)
@@ -1224,11 +1247,13 @@ pub async fn is_recording_paused() -> bool {
 #[tauri::command]
 pub async fn get_recording_state() -> serde_json::Value {
     let is_recording = IS_RECORDING.load(Ordering::SeqCst);
+    let current_meeting_id = CURRENT_MEETING_ID.lock().unwrap().clone();
     let manager_guard = RECORDING_MANAGER.lock().unwrap();
 
     if let Some(manager) = manager_guard.as_ref() {
         serde_json::json!({
             "is_recording": is_recording,
+            "meeting_id": current_meeting_id,
             "is_paused": manager.is_paused(),
             "is_active": manager.is_active(),
             "recording_duration": manager.get_recording_duration(),
@@ -1239,6 +1264,7 @@ pub async fn get_recording_state() -> serde_json::Value {
     } else {
         serde_json::json!({
             "is_recording": is_recording,
+            "meeting_id": current_meeting_id,
             "is_paused": false,
             "is_active": false,
             "recording_duration": null,
@@ -1247,6 +1273,13 @@ pub async fn get_recording_state() -> serde_json::Value {
             "current_pause_duration": null
         })
     }
+}
+
+/// Get the current active meeting ID if recording is active
+#[tauri::command]
+pub async fn get_current_meeting_id() -> Result<Option<String>, String> {
+    let mid = CURRENT_MEETING_ID.lock().unwrap().clone();
+    Ok(mid)
 }
 
 /// Get the meeting folder path for the current recording

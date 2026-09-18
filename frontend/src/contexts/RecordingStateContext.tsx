@@ -27,6 +27,7 @@ export enum RecordingStatus {
 
 interface RecordingState {
   isRecording: boolean;           // Is a recording session active
+  meeting_id?: string | null;     // Current backend meeting ID
   isPaused: boolean;              // Is the recording paused
   isActive: boolean;              // Is actively recording (recording && !paused)
   recordingDuration: number | null;  // Total duration including pauses
@@ -61,6 +62,7 @@ export const useRecordingState = () => {
 export function RecordingStateProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<RecordingState>({
     isRecording: false,
+    meeting_id: null,
     isPaused: false,
     isActive: false,
     recordingDuration: null,
@@ -93,6 +95,7 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
       setState(prev => ({
         ...prev,
         isRecording: backendState.is_recording,
+        meeting_id: backendState.meeting_id ?? null,
         isPaused: backendState.is_paused,
         isActive: backendState.is_active,
         recordingDuration: backendState.recording_duration,
@@ -115,7 +118,11 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
     }
 
     console.log('[RecordingStateContext] Starting state polling (500ms interval)');
-    pollingIntervalRef.current = setInterval(syncWithBackend, 500);
+    const timer = setInterval(syncWithBackend, 500);
+    if (typeof (timer as any)?.unref === 'function') {
+      (timer as any).unref();
+    }
+    pollingIntervalRef.current = timer;
   };
 
   /**
@@ -139,11 +146,12 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
     const setupListeners = async () => {
       try {
         // Recording started
-        const unlistenStarted = await recordingService.onRecordingStarted(() => {
+        const unlistenStarted = await recordingService.onRecordingStarted((payload) => {
           console.log('[RecordingStateContext] Recording started event');
           setState(prev => ({
             ...prev,
             isRecording: true,
+            meeting_id: payload?.meeting_id ?? null,
             isPaused: false,
             isActive: true,
             status: RecordingStatus.RECORDING,  // NEW: Set status to RECORDING
@@ -180,6 +188,7 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
               status: newStatus,
               statusMessage: newStatus === RecordingStatus.STOPPING ? 'Stopping recording...' : prev.statusMessage,
               isRecording: false,
+              meeting_id: null,
               isPaused: false,
               isActive: false,
               recordingDuration: null,
@@ -222,7 +231,13 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
 
     return () => {
       console.log('[RecordingStateContext] Cleaning up event listeners');
-      unsubscribers.forEach(unsub => unsub());
+      unsubscribers.forEach(unsub => {
+        try {
+          unsub();
+        } catch {
+          // ignore unlisten errors during teardown
+        }
+      });
       stopPolling();
     };
   }, []);

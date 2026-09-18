@@ -26,7 +26,8 @@
         "tauri:build:openblas": "tauri build -- --features openblas",
         "tauri:build:hipblas": "tauri build -- --features hipblas",
         "lint": "next lint",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test:integration": "node --import tsx --test tests/integration/session-lifecycle.test.ts"
     },
     "dependencies": {
         "@blocknote/core": "0.36.0",
@@ -108,9 +109,11 @@
         "@types/react-test-renderer": "18.3.1",
         "autoprefixer": "^10.0.1",
         "concurrently": "^8.2.2",
+        "fake-indexeddb": "^6.2.5",
         "postcss": "^8",
         "react-test-renderer": "18.3.1",
         "tailwindcss": "^3.4.1",
+        "tsx": "^4.23.13",
         "typescript": "^5.7.2",
         "wait-on": "^7.2.0"
     }
