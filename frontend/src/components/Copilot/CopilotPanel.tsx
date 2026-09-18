@@ -11,7 +11,8 @@ import {
   X,
   Layers,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -57,7 +58,10 @@ const CopilotPanelContent: React.FC<{
     dismissQuestion,
     regenerateAnswer,
     activeProvider,
-    activeModel
+    activeModel,
+    health,
+    isCheckingHealth,
+    checkConnection
   } = copilot;
 
   const [copied, setCopied] = useState(false);
@@ -204,12 +208,22 @@ const CopilotPanelContent: React.FC<{
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Erro */}
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-2 text-xs text-red-700">
-            <AlertCircle size={15} className="shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium">Falha na chamada do modelo</p>
-              <p className="text-[11px] text-red-600 mt-0.5">{error}</p>
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex flex-col space-y-2 text-xs text-red-700">
+            <div className="flex items-start space-x-2">
+              <AlertCircle size={15} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Falha na chamada do modelo</p>
+                <p className="text-[11px] text-red-600 mt-0.5">{error}</p>
+              </div>
             </div>
+            <button
+              onClick={() => checkConnection()}
+              disabled={isCheckingHealth}
+              className="self-start text-[11px] font-medium text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded flex items-center space-x-1.5 transition-colors"
+            >
+              <Activity size={12} className={isCheckingHealth ? "animate-spin text-red-600" : ""} />
+              <span>{isCheckingHealth ? "Testando conexão..." : "Testar Servidor LM Studio / Ollama"}</span>
+            </button>
           </div>
         )}
 
@@ -328,18 +342,39 @@ const CopilotPanelContent: React.FC<{
 
       {/* Rodapé com Indicador de Modelo e Limpar */}
       <div className="p-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between text-[11px] text-gray-500">
-        <div className="flex items-center space-x-1.5 truncate max-w-[210px]" title={`Modelo: ${activeModel} (${activeProvider})`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+        <div className="flex items-center space-x-1.5 truncate max-w-[220px]" title={health?.statusText || `Modelo: ${activeModel} (${activeProvider})`}>
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              isCheckingHealth
+                ? 'bg-amber-400 animate-ping'
+                : health && !health.ok
+                  ? 'bg-red-500'
+                  : 'bg-emerald-500'
+            }`}
+          />
           <span className="truncate font-medium text-gray-700">{activeModel}</span>
+          {health?.latencyMs !== undefined && health.ok && (
+            <span className="text-[10px] text-gray-400 shrink-0">({health.latencyMs}ms)</span>
+          )}
         </div>
-        <button
-          onClick={clearState}
-          className="hover:text-gray-800 flex items-center space-x-1 p-1 rounded hover:bg-gray-100"
-          title="Limpar sugestões e histórico do copiloto"
-        >
-          <RotateCcw size={12} />
-          <span>Limpar</span>
-        </button>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => checkConnection()}
+            disabled={isCheckingHealth}
+            className="hover:text-indigo-600 p-1 rounded hover:bg-gray-100 transition-colors"
+            title="Verificar conectividade com LM Studio / Ollama"
+          >
+            <Activity size={12} className={isCheckingHealth ? "animate-spin text-amber-500" : ""} />
+          </button>
+          <button
+            onClick={clearState}
+            className="hover:text-gray-800 flex items-center space-x-1 p-1 rounded hover:bg-gray-100"
+            title="Limpar sugestões e histórico do copiloto"
+          >
+            <RotateCcw size={12} />
+            <span>Limpar</span>
+          </button>
+        </div>
       </div>
     </aside>
   );

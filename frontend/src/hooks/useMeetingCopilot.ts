@@ -8,6 +8,7 @@ import {
   CopilotQuestion,
   CopilotSegment,
   EvidenceMatch,
+  HealthCheckResult,
   QuestionDetector,
   TranscriptBuffer
 } from '@/copilot';
@@ -31,6 +32,9 @@ export interface UseMeetingCopilotReturn {
   regenerateAnswer: () => Promise<void>;
   activeProvider: string;
   activeModel: string;
+  health: HealthCheckResult | null;
+  isCheckingHealth: boolean;
+  checkConnection: () => Promise<HealthCheckResult>;
 }
 
 export function useMeetingCopilot(): UseMeetingCopilotReturn {
@@ -44,6 +48,8 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const [error, setError] = useState<string | null>(null);
   const [scopes, setScopes] = useState<string[]>(['backend', 'incidentes', 'java']);
   const [isAutoTrigger, setIsAutoTrigger] = useState<boolean>(false);
+  const [health, setHealth] = useState<HealthCheckResult | null>(null);
+  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
 
   // Instâncias singleton de processamento
   const bufferRef = useRef<TranscriptBuffer>(new TranscriptBuffer(currentMeetingId || 'copilot-session'));
@@ -109,6 +115,45 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       autoTrigger: isAutoTriggerRef.current
     };
   }, [modelConfig, providerApiKeys]);
+
+  // Verificação de conectividade manual / sob demanda
+  const checkConnection = useCallback(async (): Promise<HealthCheckResult> => {
+    setIsCheckingHealth(true);
+    try {
+      const config = getCopilotConfig();
+      const res = await assistantRef.current.checkHealth(config);
+      setHealth(res);
+      if (res.ok) {
+        toast.success(res.statusText, { duration: 3000 });
+      } else {
+        toast.error(res.statusText, { duration: 4500 });
+      }
+      return res;
+    } finally {
+      setIsCheckingHealth(false);
+    }
+  }, [getCopilotConfig]);
+
+  // Checagem de conectividade em segundo plano ao alterar configuração
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const config = getCopilotConfig();
+        const res = await assistantRef.current.checkHealth(config);
+        if (active) {
+          setHealth(res);
+        }
+      } catch {
+        // Silencioso em verificação passiva
+      }
+    }, 1500);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [getCopilotConfig]);
 
   // Execução da busca e geração para uma pergunta
   const executeCopilotSuggestion = useCallback(async (questionText: string, questionObj: CopilotQuestion) => {
@@ -373,6 +418,9 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     dismissQuestion,
     regenerateAnswer,
     activeProvider,
-    activeModel
+    activeModel,
+    health,
+    isCheckingHealth,
+    checkConnection
   };
 }

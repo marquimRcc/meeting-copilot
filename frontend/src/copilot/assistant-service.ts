@@ -50,8 +50,32 @@ export function buildPrompt(request: SuggestionRequest): { system: string; user:
   return { system, user };
 }
 
+export interface HealthCheckResult {
+  ok: boolean;
+  provider: string;
+  endpoint: string;
+  statusText: string;
+  models: string[];
+  latencyMs: number;
+}
+
 /**
- * Serviço de comunicação com LLM (Ollama / OpenAI) com suporte nativo a streaming de tokens.
+ * Normaliza endpoints de IA substituindo localhost por 127.0.0.1 em portas locais
+ * para evitar falhas de resolução IPv6 (::1) no Linux/Windows, e remove barras finais.
+ */
+export function normalizeEndpoint(endpoint?: string, defaultEndpoint = 'http://127.0.0.1:11434'): string {
+  if (!endpoint || !endpoint.trim()) {
+    return defaultEndpoint;
+  }
+  let clean = endpoint.trim().replace(/\/+$/, '');
+  clean = clean.replace(/^http:\/\/localhost(?::(\d+))?/, (_match, port) => {
+    return port ? `http://127.0.0.1:${port}` : 'http://127.0.0.1';
+  });
+  return clean;
+}
+
+/**
+ * Serviço de comunicação com LLM (Ollama / OpenAI / LM Studio) com suporte nativo a streaming de tokens.
  */
 export class CopilotAssistantService {
   private activeController: AbortController | null = null;
@@ -63,6 +87,107 @@ export class CopilotAssistantService {
     if (this.activeController) {
       this.activeController.abort();
       this.activeController = null;
+    }
+  }
+
+  /**
+   * Realiza health check não bloqueante no servidor de IA (LM Studio / Ollama / Custom OpenAI).
+   */
+  async checkHealth(config: CopilotConfig): Promise<HealthCheckResult> {
+    const startTime = Date.now();
+    const isOllama = config.provider === 'ollama';
+    const defaultEp = isOllama
+      ? 'http://127.0.0.1:11434'
+      : config.provider === 'custom-openai'
+        ? 'http://127.0.0.1:1234/v1'
+        : 'https://api.openai.com/v1';
+
+    const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
+    try {
+      if (isOllama) {
+        const url = `${endpoint}/api/tags`;
+        const res = await fetch(url, { method: 'GET', signal: controller.signal });
+        clearTimeout(timer);
+        const latencyMs = Date.now() - startTime;
+        if (!res.ok) {
+          return {
+            ok: false,
+            provider: 'ollama',
+            endpoint,
+            statusText: `Ollama retornou status HTTP ${res.status}: ${res.statusText}`,
+            models: [],
+            latencyMs
+          };
+        }
+        const json = await res.json();
+        const models: string[] = Array.isArray(json.models)
+          ? json.models.map((m: { name?: string; model?: string }) => m.name || m.model || '').filter(Boolean)
+          : [];
+        return {
+          ok: true,
+          provider: 'ollama',
+          endpoint,
+          statusText: models.length > 0 ? `Ollama online (${models.length} modelos disponíveis)` : 'Ollama online (nenhum modelo baixado)',
+          models,
+          latencyMs
+        };
+      } else {
+        const url = `${endpoint}/models`;
+        const headers: Record<string, string> = {};
+        if (config.apiKey) {
+          headers['Authorization'] = `Bearer ${config.apiKey}`;
+        }
+        const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+        clearTimeout(timer);
+        const latencyMs = Date.now() - startTime;
+        if (!res.ok) {
+          return {
+            ok: false,
+            provider: config.provider,
+            endpoint,
+            statusText: `Servidor retornou status HTTP ${res.status}: ${res.statusText}`,
+            models: [],
+            latencyMs
+          };
+        }
+        const json = await res.json();
+        const models: string[] = Array.isArray(json.data)
+          ? json.data.map((m: { id?: string }) => m.id || '').filter(Boolean)
+          : [];
+        return {
+          ok: true,
+          provider: config.provider,
+          endpoint,
+          statusText: models.length > 0
+            ? `${config.provider === 'custom-openai' ? 'LM Studio' : 'Servidor'} online (${models.length} modelos detectados)`
+            : 'Servidor online',
+          models,
+          latencyMs
+        };
+      }
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      const latencyMs = Date.now() - startTime;
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      let statusText = `Servidor inacessível em ${endpoint}`;
+      if (controller.signal.aborted) {
+        statusText = `Tempo limite esgotado ao conectar em ${endpoint} (4s)`;
+      } else if (rawMsg.includes('Failed to fetch') || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('fetch failed')) {
+        statusText = isOllama
+          ? `Ollama offline em ${endpoint}. Inicie com 'ollama serve'`
+          : `LM Studio offline em ${endpoint}. Inicie o servidor local na porta 1234`;
+      }
+      return {
+        ok: false,
+        provider: config.provider,
+        endpoint,
+        statusText,
+        models: [],
+        latencyMs
+      };
     }
   }
 
@@ -117,7 +242,7 @@ export class CopilotAssistantService {
     signal: AbortSignal,
     callbacks: SuggestionCallbacks
   ): Promise<string> {
-    const endpoint = (config.endpoint || 'http://127.0.0.1:11434').replace(/\/+$/, '');
+    const endpoint = normalizeEndpoint(config.endpoint, 'http://127.0.0.1:11434');
     const url = `${endpoint}/api/chat`;
 
     const response = await fetch(url, {
@@ -184,7 +309,8 @@ export class CopilotAssistantService {
     signal: AbortSignal,
     callbacks: SuggestionCallbacks
   ): Promise<string> {
-    const endpoint = (config.endpoint || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    const defaultEp = config.provider === 'custom-openai' ? 'http://127.0.0.1:1234/v1' : 'https://api.openai.com/v1';
+    const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
     const url = `${endpoint}/chat/completions`;
 
     const headers: Record<string, string> = {

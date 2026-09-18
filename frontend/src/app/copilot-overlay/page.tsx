@@ -14,7 +14,8 @@ import {
   Minus,
   ShieldCheck,
   Layers,
-  RotateCcw
+  RotateCcw,
+  Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -36,7 +37,10 @@ export default function CopilotOverlayPage() {
     dismissQuestion,
     regenerateAnswer,
     activeProvider,
-    activeModel
+    activeModel,
+    health,
+    isCheckingHealth,
+    checkConnection
   } = useMeetingCopilot();
 
   const [isPinned, setIsPinned] = useState(true);
@@ -308,17 +312,36 @@ export default function CopilotOverlayPage() {
 
       {/* Rodapé */}
       <footer className="h-7 px-3 bg-slate-800/80 border-t border-slate-700/60 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
-        <span className="truncate max-w-[200px]" title={`Modelo: ${activeModel} (${activeProvider})`}>
-          {activeModel}
-        </span>
-        <button
-          onClick={clearState}
-          className="hover:text-slate-200 flex items-center space-x-1 transition-colors"
-          title="Limpar sugestões"
-        >
-          <RotateCcw size={11} />
-          <span>Limpar</span>
-        </button>
+        <div className="flex items-center space-x-1.5 truncate max-w-[200px]" title={health?.statusText || `Modelo: ${activeModel} (${activeProvider})`}>
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              isCheckingHealth
+                ? 'bg-amber-400 animate-ping'
+                : health && !health.ok
+                  ? 'bg-red-400'
+                  : 'bg-emerald-400'
+            }`}
+          />
+          <span className="truncate">{activeModel}</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <button
+            onClick={() => checkConnection()}
+            disabled={isCheckingHealth}
+            className="hover:text-slate-200 transition-colors p-0.5 rounded"
+            title="Verificar conectividade com LM Studio / Ollama"
+          >
+            <Activity size={11} className={isCheckingHealth ? "animate-spin text-amber-400" : ""} />
+          </button>
+          <button
+            onClick={clearState}
+            className="hover:text-slate-200 flex items-center space-x-1 transition-colors"
+            title="Limpar sugestões"
+          >
+            <RotateCcw size={11} />
+            <span>Limpar</span>
+          </button>
+        </div>
       </footer>
     </div>
   );

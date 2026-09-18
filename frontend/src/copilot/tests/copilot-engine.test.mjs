@@ -5,7 +5,7 @@ import { stemPt, stemmedTokensPt, normalizePt } from '../stemmer-pt.ts';
 import { BM25Index } from '../bm25-index.ts';
 import { QuestionDetector } from '../question-detector.ts';
 import { TranscriptBuffer } from '../transcript-buffer.ts';
-import { buildPrompt, CopilotAssistantService } from '../assistant-service.ts';
+import { buildPrompt, CopilotAssistantService, normalizeEndpoint } from '../assistant-service.ts';
 
 describe('Parte 1: Stemmer PT-BR', () => {
   test('reduz diferentes conjugações do mesmo verbo ao mesmo radical', () => {
@@ -323,6 +323,42 @@ describe('Parte 3: Assistente LLM com Streaming e Cancelamento', () => {
 
     assert.ok(errorReported);
     assert.match(errorReported.message, /LM Studio na porta 1234 ou Ollama na porta 11434/);
+  });
+
+  test('normalizeEndpoint converte localhost para 127.0.0.1 em portas locais e remove trailing slashes', () => {
+    assert.strictEqual(normalizeEndpoint('http://localhost:1234/v1/'), 'http://127.0.0.1:1234/v1');
+    assert.strictEqual(normalizeEndpoint('http://localhost:11434/'), 'http://127.0.0.1:11434');
+    assert.strictEqual(normalizeEndpoint('http://localhost/'), 'http://127.0.0.1');
+    assert.strictEqual(normalizeEndpoint('', 'http://127.0.0.1:11434'), 'http://127.0.0.1:11434');
+    assert.strictEqual(normalizeEndpoint('https://api.groq.com/openai/v1/'), 'https://api.groq.com/openai/v1');
+  });
+
+  test('checkHealth reporta servidor offline de forma resiliente sem lançar exceção', async () => {
+    const service = new CopilotAssistantService();
+
+    // Ollama em porta não utilizada
+    const ollamaHealth = await service.checkHealth({
+      provider: 'ollama',
+      endpoint: 'http://127.0.0.1:59998',
+      model: 'llama3.2',
+      scopes: ['java'],
+      autoTrigger: false
+    });
+    assert.strictEqual(ollamaHealth.ok, false);
+    assert.strictEqual(ollamaHealth.provider, 'ollama');
+    assert.match(ollamaHealth.statusText, /offline|inacessível/);
+
+    // LM Studio (custom-openai) em porta não utilizada
+    const lmStudioHealth = await service.checkHealth({
+      provider: 'custom-openai',
+      endpoint: 'http://127.0.0.1:59998/v1',
+      model: 'qwen2.5-coder',
+      scopes: ['java'],
+      autoTrigger: false
+    });
+    assert.strictEqual(lmStudioHealth.ok, false);
+    assert.strictEqual(lmStudioHealth.provider, 'custom-openai');
+    assert.match(lmStudioHealth.statusText, /offline|inacessível/);
   });
 });
 
