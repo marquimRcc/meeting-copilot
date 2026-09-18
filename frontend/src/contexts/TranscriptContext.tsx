@@ -620,7 +620,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       .join('\n');
     navigator.clipboard.writeText(fullTranscript);
 
-    toast.success("Transcript copied to clipboard");
+    toast.success("Transcrição copiada para a área de transferência");
   }, [transcripts]);
 
   // Force flush buffer (for final transcript processing)

@@ -53,22 +53,22 @@ export interface ModelDisplayInfo {
 
 export const MODEL_DISPLAY_CONFIG: Record<string, ModelDisplayInfo> = {
   'parakeet-tdt-0.6b-v3-int8': {
-    friendlyName: 'Lightning',
+    friendlyName: 'Ultrarrápido',
     icon: '⚡',
-    tagline: 'Real time • Best for speed, great accuracy',
+    tagline: 'Tempo real • Foco em velocidade, ótima precisão',
     recommended: true,
     tier: 'fastest'
   },
   'parakeet-tdt-0.6b-v2-int8': {
-    friendlyName: 'Compact',
+    friendlyName: 'Compacto',
     icon: '📦',
-    tagline: 'Real time • Smaller size',
+    tagline: 'Tempo real • Tamanho reduzido',
     tier: 'balanced'
   },
   'parakeet-tdt-0.6b-v3-fp32': {
-    friendlyName: 'Precise',
+    friendlyName: 'Preciso',
     icon: '🎯',
-    tagline: '20x real-time • Higher accuracy',
+    tagline: '20x tempo real • Maior precisão',
     tier: 'precise'
   }
 };

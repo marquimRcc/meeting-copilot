@@ -37,11 +37,11 @@ export function About() {
             if (info.available) {
                 setShowUpdateDialog(true);
             } else {
-                toast.success('You are running the latest version');
+                toast.success('Você está usando a versão mais recente');
             }
         } catch (error: any) {
             console.error('Failed to check for updates:', error);
-            toast.error('Failed to check for updates: ' + (error.message || 'Unknown error'));
+            toast.error('Falha ao verificar atualizações: ' + (error.message || 'Erro desconhecido'));
         } finally {
             setIsChecking(false);
         }
@@ -63,7 +63,7 @@ export function About() {
                 {/* <h1 className="text-xl font-bold text-gray-900">Meetily</h1> */}
                 <span className="text-sm text-gray-500"> v{currentVersion}</span>
                 <p className="text-medium text-gray-600 mt-1">
-                    Real-time notes and summaries that never leave your machine.
+                    Notas e resumos em tempo real que nunca saem da sua máquina.
                 </p>
                 <div className="mt-3">
                     <Button
@@ -76,18 +76,18 @@ export function About() {
                         {isChecking ? (
                             <>
                                 <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                                Checking...
+                                Verificando...
                             </>
                         ) : (
                             <>
                                 <CheckCircle2 className="h-3 w-3 mr-2" />
-                                Check for Updates
+                                Verificar Atualizações
                             </>
                         )}
                     </Button>
                     {updateInfo?.available && (
                         <div className="mt-2 text-xs text-blue-600">
-                            Update available: v{updateInfo.version}
+                            Atualização disponível: v{updateInfo.version}
                         </div>
                     )}
                 </div>
@@ -95,23 +95,23 @@ export function About() {
 
             {/* Features Grid - Compact */}
             <div className="space-y-3">
-                <h2 className="text-base font-semibold text-gray-800">What makes Meetily different</h2>
+                <h2 className="text-base font-semibold text-gray-800">O que torna o Meetily diferente</h2>
                 <div className="grid grid-cols-2 gap-2">
                     <div className="bg-gray-50 rounded p-3 hover:bg-gray-100 transition-colors">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Privacy-first</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Your data & AI processing workflow can now stay within your premise. No cloud, no leaks.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">Privacidade em primeiro lugar</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">Seus dados e processamento de IA ficam no seu dispositivo. Sem nuvem, sem vazamentos.</p>
                     </div>
                     <div className="bg-gray-50 rounded p-3 hover:bg-gray-100 transition-colors">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Use Any Model</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Prefer local open-source model? Great. Want to plug in an external API? Also fine. No lock-in.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">Use Qualquer Modelo</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">Prefere modelos locais open-source? Ótimo. Quer conectar uma API externa? Também funciona. Sem amarras.</p>
                     </div>
                     <div className="bg-gray-50 rounded p-3 hover:bg-gray-100 transition-colors">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Cost-Smart</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Avoid pay-per-minute bills by running models locally (or pay only for the calls you choose).</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">Econômico</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">Evite custos por minuto rodando modelos localmente (ou pague apenas pelas chamadas que escolher).</p>
                     </div>
                     <div className="bg-gray-50 rounded p-3 hover:bg-gray-100 transition-colors">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Works everywhere</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Google Meet, Zoom, Teams-online or offline.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">Funciona em qualquer lugar</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">Google Meet, Zoom, Teams — online ou offline.</p>
                     </div>
                 </div>
             </div>
@@ -119,28 +119,28 @@ export function About() {
             {/* Coming Soon - Compact */}
             <div className="bg-blue-50 rounded p-3">
                 <p className="text-s text-blue-800">
-                    <span className="font-bold">Coming soon:</span> A library of on-device AI agents-automating follow-ups, action tracking, and more.
+                    <span className="font-bold">Em breve:</span> Uma biblioteca de agentes de IA locais para automatizar follow-ups, tarefas e muito mais.
                 </p>
             </div>
 
             {/* CTA Section - Compact */}
             <div className="text-center space-y-2">
-                <h3 className="text-medium font-semibold text-gray-800">Ready to push your business further?</h3>
+                <h3 className="text-medium font-semibold text-gray-800">Pronto para levar seu negócio mais longe?</h3>
                 <p className="text-s text-gray-600">
-                    If you're planning to build privacy-first custom AI agents or a fully tailored product for your <span className="font-bold">business</span>, we can help you build it.
+                    Se você planeja criar agentes de IA personalizados com foco em privacidade para a sua <span className="font-bold">empresa</span>, nós podemos ajudar.
                 </p>
                 <button
                     onClick={handleContactClick}
                     className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors duration-200 shadow-sm hover:shadow-md"
                 >
-                    Chat with the Zackriya team
+                    Falar com a equipe Zackriya
                 </button>
             </div>
 
             {/* Footer - Compact */}
             <div className="pt-2 border-t border-gray-200 text-center">
                 <p className="text-xs text-gray-400">
-                    Built by Zackriya Solutions
+                    Desenvolvido por Zackriya Solutions
                 </p>
             </div>
             <AnalyticsConsentSwitch />

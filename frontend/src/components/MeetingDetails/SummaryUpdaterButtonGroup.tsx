@@ -25,7 +25,7 @@ export function SummaryUpdaterButtonGroup({
         variant="outline"
         size="sm"
         className={`${isDirty ? 'bg-green-200' : ""}`}
-        title={isSaving ? "Saving" : "Save Changes"}
+        title={isSaving ? "Salvando" : "Salvar Alterações"}
         onClick={() => {
           Analytics.trackButtonClick('save_changes', 'meeting_details');
           onSave();
@@ -35,12 +35,12 @@ export function SummaryUpdaterButtonGroup({
         {isSaving ? (
           <>
             <Loader2 className="animate-spin" />
-            <span className="hidden @[40rem]:inline">Saving...</span>
+            <span className="hidden @[40rem]:inline">Salvando...</span>
           </>
         ) : (
           <>
             <Save />
-            <span className="hidden @[40rem]:inline">Save</span>
+            <span className="hidden @[40rem]:inline">Salvar</span>
           </>
         )}
       </Button>
@@ -49,7 +49,7 @@ export function SummaryUpdaterButtonGroup({
       <Button
         variant="outline"
         size="sm"
-        title="Copy Summary"
+        title="Copiar Resumo"
         onClick={() => {
           Analytics.trackButtonClick('copy_summary', 'meeting_details');
           onCopy();
@@ -57,7 +57,7 @@ export function SummaryUpdaterButtonGroup({
         className="cursor-pointer"
       >
         <Copy />
-        <span className="hidden @[40rem]:inline">Copy</span>
+        <span className="hidden @[40rem]:inline">Copiar</span>
       </Button>
 
     </ButtonGroup>

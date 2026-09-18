@@ -179,15 +179,15 @@ export function getModelPerformanceBadge(modelName: string): { label: string; co
   const type = getModelType(modelName);
   switch (type) {
     case 'f16':
-      return { label: 'Full Precision', color: 'blue' };
+      return { label: 'Precisão Total', color: 'blue' };
     case 'q5_1':
-      return { label: 'Balanced+', color: 'green' };
+      return { label: 'Equilibrado+', color: 'green' };
     case 'q5_0':
-      return { label: 'Balanced', color: 'green' };
+      return { label: 'Equilibrado', color: 'green' };
     case 'q4_0':
-      return { label: 'Fast', color: 'orange' };
+      return { label: 'Rápido', color: 'orange' };
     default:
-      return { label: 'Standard', color: 'gray' };
+      return { label: 'Padrão', color: 'gray' };
   }
 }
 
@@ -200,42 +200,42 @@ export function getModelTagline(modelName: string, speed: ProcessingSpeed, accur
   let speedText = '';
   switch (speed) {
     case 'Very Fast':
-      speedText = 'Real time';
+      speedText = 'Tempo real';
       break;
     case 'Fast':
-      speedText = 'Fast processing';
+      speedText = 'Processamento rápido';
       break;
     case 'Medium':
-      speedText = 'Moderate speed';
+      speedText = 'Velocidade moderada';
       break;
     case 'Slow':
-      speedText = 'Slower processing';
+      speedText = 'Processamento mais lento';
       break;
   }
 
   // Key feature based on model and accuracy
   let featureText = '';
   if (baseName === 'large-v3') {
-    featureText = 'Most accurate';
+    featureText = 'Mais preciso';
   } else if (baseName === 'large-v3-turbo') {
-    featureText = 'Best accuracy with speed';
+    featureText = 'Melhor precisão com velocidade';
   } else if (baseName === 'medium') {
-    featureText = accuracy === 'High' ? 'Professional quality' : 'Balanced quality';
+    featureText = accuracy === 'High' ? 'Qualidade profissional' : 'Qualidade equilibrada';
   } else if (baseName === 'small') {
-    featureText = 'Good accuracy';
+    featureText = 'Boa precisão';
   } else if (baseName === 'base') {
-    featureText = 'Balanced quality';
+    featureText = 'Qualidade equilibrada';
   } else if (baseName === 'tiny') {
-    featureText = 'Fastest option';
+    featureText = 'Opção mais rápida';
   }
 
   // Add quantization note if applicable
   if (isQuantized) {
     const quantType = getModelType(modelName);
     if (quantType === 'q5_0') {
-      featureText += ', optimized';
+      featureText += ', otimizado';
     } else if (quantType === 'q4_0') {
-      featureText += ', ultra fast';
+      featureText += ', ultrarrápido';
     }
   }
 

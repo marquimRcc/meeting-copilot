@@ -27,21 +27,21 @@ function categorizeError(error: string): string {
     lowerError.includes('connection') ||
     lowerError.includes('timeout') ||
     lowerError.includes('failed to start download')) {
-    return 'Network error - Check your internet connection';
+    return 'Erro de rede - Verifique sua conexão com a internet';
   }
 
   if (lowerError.includes('status:') || lowerError.includes('http')) {
-    return 'Server error - Download temporarily unavailable';
+    return 'Erro no servidor - Download temporariamente indisponível';
   }
 
   if (lowerError.includes('disk') ||
     lowerError.includes('write') ||
     lowerError.includes('file')) {
-    return 'Storage error - Check available disk space';
+    return 'Erro de armazenamento - Verifique o espaço disponível em disco';
   }
 
   if (lowerError.includes('invalid') || lowerError.includes('validation')) {
-    return 'File validation failed - Please retry download';
+    return 'Falha na validação do arquivo - Por favor, tente o download novamente';
   }
 
   // Fallback to original error
@@ -87,11 +87,11 @@ function DownloadToastContent({
         </div>
 
         {hasError ? (
-          <p className="text-xs text-red-600">{download.error || 'Download failed'}</p>
+          <p className="text-xs text-red-600">{download.error || 'Falha no download'}</p>
         ) : isComplete ? (
-          <p className="text-xs text-green-600">Download complete</p>
+          <p className="text-xs text-green-600">Download concluído</p>
         ) : isCancelled ? (
-          <p className="text-xs text-gray-600">Download cancelled</p>
+          <p className="text-xs text-gray-600">Download cancelado</p>
         ) : (
           <>
             {/* Progress bar */}
@@ -228,7 +228,7 @@ export function useDownloadProgressToast() {
         const { modelName, progress, downloaded_mb, total_mb, speed_mbps, status } = event.payload;
         const downloadData: DownloadProgress = {
           modelName,
-          displayName: 'Transcription Model (Parakeet)',
+          displayName: 'Modelo de Transcrição (Parakeet)',
           progress,
           downloadedMb: downloaded_mb ?? 0,
           totalMb: total_mb ?? 670,
@@ -253,7 +253,7 @@ export function useDownloadProgressToast() {
         const { modelName } = event.payload;
         const downloadData: DownloadProgress = {
           modelName,
-          displayName: 'Transcription Model (Parakeet)',
+          displayName: 'Modelo de Transcrição (Parakeet)',
           progress: 100,
           downloadedMb: 670,
           totalMb: 670,
@@ -272,7 +272,7 @@ export function useDownloadProgressToast() {
         const { modelName, error } = event.payload;
         const downloadData: DownloadProgress = {
           modelName,
-          displayName: 'Transcription Model (Parakeet)',
+          displayName: 'Modelo de Transcrição (Parakeet)',
           progress: 0,
           downloadedMb: 0,
           totalMb: 670,
@@ -308,7 +308,7 @@ export function useDownloadProgressToast() {
 
       const downloadData: DownloadProgress = {
         modelName: model,
-        displayName: `Summary Model (${model})`,
+        displayName: `Modelo de Resumo (${model})`,
         progress: progress ?? 0,
         downloadedMb: downloaded_mb ?? 0,
         totalMb: getDownloadTotalMb(total_mb, model),
@@ -321,7 +321,7 @@ export function useDownloadProgressToast() {
             : status === 'error'
               ? 'error'
               : 'downloading',
-        error: status === 'error' ? categorizeError(error || 'Download failed') : undefined,
+        error: status === 'error' ? categorizeError(error || 'Falha no download') : undefined,
       };
 
       updateDownload(model, downloadData);

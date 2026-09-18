@@ -29,31 +29,31 @@ interface CommandOption {
 const COMMANDS: CommandOption[] = [
   { 
     id: 'text', 
-    label: 'Text', 
+    label: 'Texto', 
     type: 'text', 
     icon: 'T', 
-    description: 'Just start writing with plain text' 
+    description: 'Comece a escrever com texto simples' 
   },
   { 
     id: 'bullet', 
-    label: 'Bullet List', 
+    label: 'Lista com Marcadores', 
     type: 'bullet', 
     icon: '•', 
-    description: 'Create a bulleted list' 
+    description: 'Criar uma lista com marcadores' 
   },
   { 
     id: 'h1', 
-    label: 'Heading 1', 
+    label: 'Título 1', 
     type: 'heading1', 
     icon: 'H1', 
-    description: 'Big section heading' 
+    description: 'Título de seção grande' 
   },
   { 
     id: 'h2', 
-    label: 'Heading 2', 
+    label: 'Título 2', 
     type: 'heading2', 
     icon: 'H2', 
-    description: 'Medium section heading' 
+    description: 'Título de seção médio' 
   },
 ];
 
@@ -250,7 +250,7 @@ export const BlockComponent: React.FC<BlockProps> = ({
             ${block.type === 'heading1' ? 'text-xl font-bold' : ''}
             ${block.type === 'heading2' ? 'text-lg font-semibold' : ''}
           `}
-          placeholder="Type '/' for commands..."
+          placeholder="Digite '/' para comandos..."
         />
 
         {showCommands && (

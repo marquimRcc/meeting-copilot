@@ -9,109 +9,109 @@ export interface Language {
   name: string;
 }
 
-// ISO 639-1 language codes supported by Whisper
+// Códigos de idioma ISO 639-1 suportados pelo Whisper
 const LANGUAGES: Language[] = [
-  { code: 'auto', name: 'Auto Detect (Original Language)' },
-  { code: 'auto-translate', name: 'Auto Detect (Translate to English)' },
-  { code: 'en', name: 'English' },
-  { code: 'zh', name: 'Chinese' },
-  { code: 'de', name: 'German' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'ko', name: 'Korean' },
-  { code: 'fr', name: 'French' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'tr', name: 'Turkish' },
-  { code: 'pl', name: 'Polish' },
-  { code: 'ca', name: 'Catalan' },
-  { code: 'nl', name: 'Dutch' },
-  { code: 'ar', name: 'Arabic' },
-  { code: 'sv', name: 'Swedish' },
-  { code: 'it', name: 'Italian' },
-  { code: 'id', name: 'Indonesian' },
+  { code: 'auto', name: 'Detecção Automática (Idioma Original)' },
+  { code: 'auto-translate', name: 'Detecção Automática (Traduzir para Inglês)' },
+  { code: 'pt', name: 'Português' },
+  { code: 'en', name: 'Inglês' },
+  { code: 'es', name: 'Espanhol' },
+  { code: 'zh', name: 'Chinês' },
+  { code: 'de', name: 'Alemão' },
+  { code: 'ru', name: 'Russo' },
+  { code: 'ko', name: 'Coreano' },
+  { code: 'fr', name: 'Francês' },
+  { code: 'ja', name: 'Japonês' },
+  { code: 'tr', name: 'Turco' },
+  { code: 'pl', name: 'Polonês' },
+  { code: 'ca', name: 'Catalão' },
+  { code: 'nl', name: 'Holandês' },
+  { code: 'ar', name: 'Árabe' },
+  { code: 'sv', name: 'Sueco' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'id', name: 'Indonésio' },
   { code: 'hi', name: 'Hindi' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'vi', name: 'Vietnamese' },
-  { code: 'he', name: 'Hebrew' },
-  { code: 'uk', name: 'Ukrainian' },
-  { code: 'el', name: 'Greek' },
-  { code: 'ms', name: 'Malay' },
-  { code: 'cs', name: 'Czech' },
-  { code: 'ro', name: 'Romanian' },
-  { code: 'da', name: 'Danish' },
-  { code: 'hu', name: 'Hungarian' },
-  { code: 'ta', name: 'Tamil' },
-  { code: 'no', name: 'Norwegian' },
-  { code: 'th', name: 'Thai' },
+  { code: 'fi', name: 'Finlandês' },
+  { code: 'vi', name: 'Vietnamita' },
+  { code: 'he', name: 'Hebraico' },
+  { code: 'uk', name: 'Ucraniano' },
+  { code: 'el', name: 'Grego' },
+  { code: 'ms', name: 'Malaio' },
+  { code: 'cs', name: 'Tcheco' },
+  { code: 'ro', name: 'Romeno' },
+  { code: 'da', name: 'Dinamarquês' },
+  { code: 'hu', name: 'Húngaro' },
+  { code: 'ta', name: 'Tâmil' },
+  { code: 'no', name: 'Norueguês' },
+  { code: 'th', name: 'Tailandês' },
   { code: 'ur', name: 'Urdu' },
-  { code: 'hr', name: 'Croatian' },
-  { code: 'bg', name: 'Bulgarian' },
-  { code: 'lt', name: 'Lithuanian' },
-  { code: 'la', name: 'Latin' },
+  { code: 'hr', name: 'Croata' },
+  { code: 'bg', name: 'Búlgaro' },
+  { code: 'lt', name: 'Lituano' },
+  { code: 'la', name: 'Latim' },
   { code: 'mi', name: 'Maori' },
-  { code: 'ml', name: 'Malayalam' },
-  { code: 'cy', name: 'Welsh' },
-  { code: 'sk', name: 'Slovak' },
+  { code: 'ml', name: 'Malaiala' },
+  { code: 'cy', name: 'Galês' },
+  { code: 'sk', name: 'Eslovaco' },
   { code: 'te', name: 'Telugu' },
-  { code: 'fa', name: 'Persian' },
-  { code: 'lv', name: 'Latvian' },
+  { code: 'fa', name: 'Persa' },
+  { code: 'lv', name: 'Letão' },
   { code: 'bn', name: 'Bengali' },
-  { code: 'sr', name: 'Serbian' },
-  { code: 'az', name: 'Azerbaijani' },
-  { code: 'sl', name: 'Slovenian' },
-  { code: 'kn', name: 'Kannada' },
-  { code: 'et', name: 'Estonian' },
-  { code: 'mk', name: 'Macedonian' },
-  { code: 'br', name: 'Breton' },
-  { code: 'eu', name: 'Basque' },
-  { code: 'is', name: 'Icelandic' },
-  { code: 'hy', name: 'Armenian' },
-  { code: 'ne', name: 'Nepali' },
-  { code: 'mn', name: 'Mongolian' },
-  { code: 'bs', name: 'Bosnian' },
-  { code: 'kk', name: 'Kazakh' },
-  { code: 'sq', name: 'Albanian' },
-  { code: 'sw', name: 'Swahili' },
-  { code: 'gl', name: 'Galician' },
-  { code: 'mr', name: 'Marathi' },
-  { code: 'pa', name: 'Punjabi' },
-  { code: 'si', name: 'Sinhala' },
+  { code: 'sr', name: 'Sérvio' },
+  { code: 'az', name: 'Azeri' },
+  { code: 'sl', name: 'Esloveno' },
+  { code: 'kn', name: 'Canarês' },
+  { code: 'et', name: 'Estoniano' },
+  { code: 'mk', name: 'Macedônio' },
+  { code: 'br', name: 'Bretão' },
+  { code: 'eu', name: 'Basco' },
+  { code: 'is', name: 'Islandês' },
+  { code: 'hy', name: 'Armênio' },
+  { code: 'ne', name: 'Nepalês' },
+  { code: 'mn', name: 'Mongol' },
+  { code: 'bs', name: 'Bósnio' },
+  { code: 'kk', name: 'Cazaque' },
+  { code: 'sq', name: 'Albanês' },
+  { code: 'sw', name: 'Suaíli' },
+  { code: 'gl', name: 'Galego' },
+  { code: 'mr', name: 'Marati' },
+  { code: 'pa', name: 'Panjabi' },
+  { code: 'si', name: 'Cingalês' },
   { code: 'km', name: 'Khmer' },
-  { code: 'sn', name: 'Shona' },
-  { code: 'yo', name: 'Yoruba' },
+  { code: 'sn', name: 'Xona' },
+  { code: 'yo', name: 'Iorubá' },
   { code: 'so', name: 'Somali' },
-  { code: 'af', name: 'Afrikaans' },
-  { code: 'oc', name: 'Occitan' },
-  { code: 'ka', name: 'Georgian' },
-  { code: 'be', name: 'Belarusian' },
-  { code: 'tg', name: 'Tajik' },
-  { code: 'sd', name: 'Sindhi' },
-  { code: 'gu', name: 'Gujarati' },
-  { code: 'am', name: 'Amharic' },
-  { code: 'yi', name: 'Yiddish' },
-  { code: 'lo', name: 'Lao' },
-  { code: 'uz', name: 'Uzbek' },
-  { code: 'fo', name: 'Faroese' },
-  { code: 'ht', name: 'Haitian Creole' },
+  { code: 'af', name: 'Africâner' },
+  { code: 'oc', name: 'Occitano' },
+  { code: 'ka', name: 'Georgiano' },
+  { code: 'be', name: 'Bielorrusso' },
+  { code: 'tg', name: 'Tajique' },
+  { code: 'sd', name: 'Sindi' },
+  { code: 'gu', name: 'Guzerate' },
+  { code: 'am', name: 'Amárico' },
+  { code: 'yi', name: 'Iídiche' },
+  { code: 'lo', name: 'Laosiano' },
+  { code: 'uz', name: 'Uzbeque' },
+  { code: 'fo', name: 'Feroês' },
+  { code: 'ht', name: 'Crioulo Haitiano' },
   { code: 'ps', name: 'Pashto' },
-  { code: 'tk', name: 'Turkmen' },
-  { code: 'nn', name: 'Norwegian Nynorsk' },
-  { code: 'mt', name: 'Maltese' },
-  { code: 'sa', name: 'Sanskrit' },
-  { code: 'lb', name: 'Luxembourgish' },
-  { code: 'my', name: 'Myanmar' },
-  { code: 'bo', name: 'Tibetan' },
-  { code: 'tl', name: 'Tagalog' },
-  { code: 'mg', name: 'Malagasy' },
-  { code: 'as', name: 'Assamese' },
-  { code: 'tt', name: 'Tatar' },
-  { code: 'haw', name: 'Hawaiian' },
+  { code: 'tk', name: 'Turcomeno' },
+  { code: 'nn', name: 'Novo Norueguês (Nynorsk)' },
+  { code: 'mt', name: 'Maltês' },
+  { code: 'sa', name: 'Sânscrito' },
+  { code: 'lb', name: 'Luxemburguês' },
+  { code: 'my', name: 'Birmanês' },
+  { code: 'bo', name: 'Tibetano' },
+  { code: 'tl', name: 'Tagalo' },
+  { code: 'mg', name: 'Malgaxe' },
+  { code: 'as', name: 'Assamês' },
+  { code: 'tt', name: 'Tártaro' },
+  { code: 'haw', name: 'Havaiano' },
   { code: 'ln', name: 'Lingala' },
-  { code: 'ha', name: 'Hausa' },
-  { code: 'ba', name: 'Bashkir' },
-  { code: 'jw', name: 'Javanese' },
-  { code: 'su', name: 'Sundanese' },
+  { code: 'ha', name: 'Hauçá' },
+  { code: 'ba', name: 'Baskir' },
+  { code: 'jw', name: 'Javanês' },
+  { code: 'su', name: 'Sundanês' },
 ];
 
 interface LanguageSelectionProps {
@@ -155,12 +155,12 @@ export function LanguageSelection({
 
       // Show success toast
       const languageName = selectedLang?.name || languageCode;
-      toast.success("Language preference saved", {
-        description: `Transcription language set to ${languageName}`
+      toast.success("Preferência de idioma salva", {
+        description: `Idioma da transcrição definido para ${languageName}`
       });
     } catch (error) {
       console.error('Failed to save language preference:', error);
-      toast.error("Failed to save language preference", {
+      toast.error("Falha ao salvar preferência de idioma", {
         description: error instanceof Error ? error.message : String(error)
       });
     } finally {
@@ -171,14 +171,14 @@ export function LanguageSelection({
   // Find the selected language name for display
   const selectedLanguageName = LANGUAGES.find(
     lang => lang.code === selectedLanguage
-  )?.name || 'Auto Detect (Original Language)';
+  )?.name || 'Detecção Automática (Idioma Original)';
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4 text-gray-600" />
-          <h4 className="text-sm font-medium text-gray-900">Transcription Language</h4>
+          <h4 className="text-sm font-medium text-gray-900">Idioma da Transcrição</h4>
         </div>
       </div>
 
@@ -200,31 +200,31 @@ export function LanguageSelection({
         {/* Parakeet language limitation warning */}
         {isParakeet && (
           <div className="p-2 bg-amber-50 border border-amber-200 rounded text-amber-800">
-            <p className="font-medium">ℹ️ Parakeet Language Support</p>
-            <p className="mt-1 text-xs">Parakeet currently only supports automatic language detection. Manual language selection is not available. Use Whisper if you need to specify a particular language.</p>
+            <p className="font-medium">ℹ️ Suporte a Idiomas no Parakeet</p>
+            <p className="mt-1 text-xs">Atualmente, o Parakeet suporta apenas detecção automática de idioma. A seleção manual não está disponível. Use o Whisper se precisar especificar um idioma específico.</p>
           </div>
         )}
 
         {/* Info text */}
         <div className="text-xs space-y-2 pt-2">
           <p className="text-gray-600">
-            <strong>Current:</strong> {selectedLanguageName}
+            <strong>Atual:</strong> {selectedLanguageName}
           </p>
           {selectedLanguage === 'auto' && (
             <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-800">
-              <p className="font-medium">⚠️ Auto Detect may produce incorrect results</p>
-              <p className="mt-1">For best accuracy, select your specific language (e.g., English, Spanish, etc.)</p>
+              <p className="font-medium">⚠️ A detecção automática pode gerar resultados imprecisos</p>
+              <p className="mt-1">Para melhor precisão, selecione o idioma específico (ex.: Português, Inglês, Espanhol, etc.)</p>
             </div>
           )}
           {selectedLanguage === 'auto-translate' && (
             <div className="p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
-              <p className="font-medium">🌐 Translation Mode Active</p>
-              <p className="mt-1">All audio will be automatically translated to English. Best for multilingual meetings where you need English output.</p>
+              <p className="font-medium">🌐 Modo de Tradução Ativo</p>
+              <p className="mt-1">Todo o áudio será traduzido automaticamente para o inglês. Ideal para reuniões multilíngues onde você precisa da saída em inglês.</p>
             </div>
           )}
           {selectedLanguage !== 'auto' && selectedLanguage !== 'auto-translate' && (
             <p className="text-gray-600">
-              Transcription will be optimized for <strong>{selectedLanguageName}</strong>
+              A transcrição será otimizada para <strong>{selectedLanguageName}</strong>
             </p>
           )}
         </div>

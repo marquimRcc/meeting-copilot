@@ -22,7 +22,7 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ evidence }) => {
         </div>
         <div className="flex items-center space-x-1 shrink-0 ml-2">
           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700">
-            {Math.round(evidence.score * 100)}% match
+            {Math.round(evidence.score * 100)}% relevância
           </span>
           {expanded ? <ChevronUp size={14} className="text-indigo-500" /> : <ChevronDown size={14} className="text-indigo-500" />}
         </div>

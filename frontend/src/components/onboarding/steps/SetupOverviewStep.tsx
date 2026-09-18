@@ -30,12 +30,12 @@ export function SetupOverviewStep() {
     {
       number: 1,
       type: 'transcription',
-      title: 'Download Transcription Engine',
+      title: 'Baixar Motor de Transcrição',
     },
     {
       number: 2,
       type: 'summarization',
-      title: 'Download Summarization Engine',
+      title: 'Baixar Motor de Resumo',
     },
   ];
 
@@ -45,8 +45,8 @@ export function SetupOverviewStep() {
 
   return (
     <OnboardingContainer
-      title="Setup Overview"
-      description="Meetily requires that you download the Transcription & Summarization AI models for the software to work."
+      title="Visão Geral da Configuração"
+      description="O Meetily requer o download dos modelos locais de Transcrição e Resumo para funcionar perfeitamente no seu computador."
       step={2}
       totalSteps={isMac ? 4 : 3}
     >
@@ -62,7 +62,7 @@ export function SetupOverviewStep() {
                 >
                   <div className="flex-1 ml-1">
                     <h3 className="font-medium text-gray-900 flex items-center gap-2">
-                        Step {step.number} :  {step.title}
+                        Etapa {step.number} :  {step.title}
 
                         {step.type === "summarization" && (
                             <TooltipProvider>
@@ -73,8 +73,7 @@ export function SetupOverviewStep() {
                                 </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs text-sm">
-                                You can also select external AI providers like OpenAI, Claude, or
-                                Ollama for summary generation in settings.
+                                Você também pode conectar provedores externos locais como LM Studio e Ollama nas configurações.
                                 </TooltipContent>
                             </Tooltip>
                             </TooltipProvider>
@@ -94,16 +93,16 @@ export function SetupOverviewStep() {
             onClick={handleContinue}
             className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
           >
-            Let's Go
+            Continuar
           </Button>
           <div className="text-center">
             <a
-              href="https://github.com/Zackriya-Solutions/meeting-minutes"
+              href="https://github.com/marquimRcc/meeting-copilot"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-gray-600 hover:underline"
             >
-              Report issues on GitHub
+              Ver projeto no GitHub
             </a>
           </div>
         </div>
