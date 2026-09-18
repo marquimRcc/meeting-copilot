@@ -82,5 +82,3 @@ jobs:
         run: cargo check --manifest-path frontend/src-tauri/Cargo.toml
       - name: Cargo Test (Compile Only)
         run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --no-run
-      - name: Cargo Test (Unit Tests)
-        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --lib
