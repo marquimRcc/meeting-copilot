@@ -1,20 +1,23 @@
 [
   {
     "id": "arquitetura-backend",
-    "title": "Padrões de Arquitetura e Microsserviços",
+    "title": "Padrões de Arquitetura e Microsserviços (Referência Técnica)",
+    "category": "conhecimento_tecnico_referencia",
     "scopes": ["backend", "arquitetura", "java"],
-    "text": "Os padrões de arquitetura backend de referência baseiam-se em microsserviços Java com Spring Boot e Quarkus, distribuídos em clusters Kubernetes. Comunicação síncrona prioriza REST e gRPC com validação via OpenAPI e contratos de schema.\n\nPara comunicação assíncrona orientada a eventos, recomenda-se Apache Kafka com tópicos particionados por correlationId e chave de negócio. A garantia de idempotência em consumidores deve ser realizada através de tabelas de deduplicação e controle de versão transacional.\n\nO gerenciamento de segredos e configurações é centralizado via HashiCorp Vault e Consul, com rotação dinâmica de credenciais de banco de dados."
+    "text": "Padrão técnico recomendado de mercado para microsserviços Java com Spring Boot e Quarkus, distribuídos em clusters Kubernetes. Comunicação síncrona prioriza REST e gRPC com validação via OpenAPI e contratos de schema.\n\nPara comunicação assíncrona orientada a eventos, recomenda-se Apache Kafka com tópicos particionados por correlationId e chave de negócio. A garantia de idempotência em consumidores deve ser realizada através de tabelas de deduplicação e controle de versão transacional.\n\nO gerenciamento de segredos e configurações é centralizado via HashiCorp Vault e Consul, com rotação dinâmica de credenciais de banco de dados."
   },
   {
     "id": "investigacao-incidentes",
-    "title": "Procedimento de Investigação de Incidentes em Produção",
+    "title": "Procedimento de Investigação de Incidentes em Produção (Guia Técnico)",
+    "category": "conhecimento_tecnico_referencia",
     "scopes": ["incidentes", "java", "producao", "devops"],
-    "text": "Para investigar incidentes e erros em produção, o procedimento padrão consiste em rastrear o correlationId / traceId propagado em todos os logs e cabeçalhos HTTP dos microsserviços. Verifica-se nos agregadores de logs (Kibana/Grafana Loki) o primeiro serviço que lançou exceção ou retornou HTTP 5xx.\n\nEm falhas de integração com parceiros externos ou sistemas legados, analisam-se latência, rate limits, timeouts de conexão e acionamento de circuit breakers (Resilience4j). Em caso de falhas parciais em mensageria, inspecionam-se Dead Letter Queues (DLQs) e mecanismos de retentativa exponencial com jitter.\n\nPara problemas de performance ou alto consumo de memória na JVM, a orientação é gerar thread dumps e heap dumps para inspeção de deadlocks, contenção de threads, vazamentos em pools JDBC (HikariCP) e lentidão de queries no Oracle Database."
+    "text": "Procedimento técnico padrão recomendado para investigar incidentes em produção: rastrear o correlationId / traceId propagado em logs e cabeçalhos HTTP dos microsserviços. Verifica-se nos agregadores de logs (Kibana/Grafana Loki) o primeiro serviço que lançou exceção ou retornou HTTP 5xx.\n\nEm falhas de integração com parceiros externos ou sistemas legados, analisam-se latência, rate limits, timeouts de conexão e acionamento de circuit breakers (Resilience4j). Em caso de falhas parciais em mensageria, inspecionam-se Dead Letter Queues (DLQs) e mecanismos de retentativa exponencial com jitter.\n\nPara problemas de performance ou alto consumo de memória na JVM, a orientação é gerar thread dumps e heap dumps para inspeção de deadlocks, contenção de threads, vazamentos em pools JDBC (HikariCP) e lentidão de queries no Oracle Database."
   },
   {
     "id": "banco-de-dados",
-    "title": "Estratégia de Bancos de Dados e Persistência",
+    "title": "Estratégia de Bancos de Dados e Persistência (Padrão Recomendado)",
+    "category": "conhecimento_tecnico_referencia",
     "scopes": ["banco", "oracle", "backend"],
-    "text": "Para operações transacionais relacionais com conformidade ACID estrita, adota-se Oracle Database. Migrações e versionamento de schema são gerenciados via Flyway ou Liquibase durante os pipelines de CI/CD.\n\nPara otimização de consultas e relatórios de alta carga, aplicam-se índices b-tree adequados, particionamento de tabelas históricas e análise de planos de execução (EXPLAIN PLAN). Queries lentas são diagnosticadas através de relatórios AWR (Automatic Workload Repository) e estatísticas de I/O no banco.\n\nPara cache de alta performance e sessões distribuídas, adota-se Redis em cluster com TTL bem definido e estratégias de cache-aside com eventos de invalidação."
+    "text": "Diretriz técnica recomendada para persistência relacional com conformidade ACID estrita: adoção de Oracle Database ou equivalente corporativo. Migrações e versionamento de schema são gerenciados via Flyway ou Liquibase durante os pipelines de CI/CD.\n\nPara otimização de consultas e relatórios de alta carga, aplicam-se índices b-tree adequados, particionamento de tabelas históricas e análise de planos de execução (EXPLAIN PLAN). Queries lentas são diagnosticadas através de relatórios AWR (Automatic Workload Repository) e estatísticas de I/O no banco.\n\nPara cache de alta performance e sessões distribuídas, adota-se Redis em cluster com TTL bem definido e estratégias de cache-aside com eventos de invalidação."
   }
 ]

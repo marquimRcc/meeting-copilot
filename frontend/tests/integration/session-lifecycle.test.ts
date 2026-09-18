@@ -16,6 +16,14 @@ const eventRegistry = new Map<string, Array<(e: any) => void>>();
   const list = eventRegistry.get(event) || [];
   eventRegistry.set(event, list.filter(cb => cb !== fn));
 };
+(globalThis.window as any).dispatchEvent = (event: any) => {
+  const eventName = typeof event === 'string' ? event : event?.type;
+  const list = eventRegistry.get(eventName) || [];
+  for (const fn of list) {
+    fn(event);
+  }
+  return true;
+};
 (globalThis as any).window = globalThis;
 (globalThis as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
@@ -55,6 +63,8 @@ let mockBackendMeetingId: string | null = null;
 let mockBackendMeetingName = 'Default Meeting';
 let mockBackendHistory: any[] = [];
 let failRecordingStart = false;
+let startRecordingCallCount = 0;
+let startRecordingDelayMs = 0;
 
 (globalThis.window as any).__TAURI_INTERNALS__ = {
   transformCallback: (fn: (event: any) => void) => {
@@ -101,6 +111,10 @@ let failRecordingStart = false;
       return true;
     }
     if (cmd === 'start_recording_with_devices_and_meeting') {
+      startRecordingCallCount++;
+      if (startRecordingDelayMs > 0) {
+        await new Promise(r => setTimeout(r, startRecordingDelayMs));
+      }
       if (failRecordingStart) {
         throw new Error('Device failed to initialize');
       }
@@ -140,6 +154,7 @@ import { SidebarContext } from '../../src/components/Sidebar/SidebarProvider';
 import { ConfigContext } from '../../src/contexts/ConfigContext';
 import { useRecordingStart } from '../../src/hooks/useRecordingStart';
 import { indexedDBService } from '../../src/services/indexedDBService';
+import { recordingService } from '../../src/services/recordingService';
 
 let activeContext: TranscriptContextType | null = null;
 let activeStartFn: (() => Promise<void>) | null = null;
@@ -181,6 +196,8 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     mockBackendMeetingName = 'Default Meeting';
     mockBackendHistory = [];
     failRecordingStart = false;
+    startRecordingCallCount = 0;
+    startRecordingDelayMs = 0;
     activeContext = null;
     activeStartFn = null;
 
@@ -463,12 +480,12 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     assert.strictEqual(activeContext!.transcripts.length, 0);
   });
 
-  it('Cenário F — início duplicado: não apaga transcrições da reunião ativa e mantém a sessão', async () => {
+  it('Cenário F — início duplicado com corrida: backend rejeita chamada concorrente, novo transcript e sessão são preservados', async () => {
     await act(async () => {
       renderer = create(renderApp());
     });
 
-    // 1. Início normal da reunião
+    // 1. Início da reunião 1
     await act(async () => {
       await activeStartFn!();
     });
@@ -476,7 +493,7 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     const activeId = activeContext!.currentMeetingId;
     assert.ok(activeId, 'currentMeetingId deve estar ativo');
 
-    // 2. Recebe transcrições durante a reunião
+    // 2. Recebe transcrições durante a reunião 1
     await act(async () => {
       emitTauriEvent('transcript-update', {
         meeting_id: activeId,
@@ -492,15 +509,79 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     assert.strictEqual(activeContext!.transcripts.length, 1, 'Deve ter 1 transcrição na reunião ativa');
     assert.strictEqual(activeContext!.transcripts[0].text, 'Fala importante da reunião ativa');
 
-    // 3. Dispara uma segunda tentativa de início enquanto a gravação já está ativa
+    // 3. Simula chamada concorrente direta ao backend que recebe erro 'Recording already in progress'
+    let rejectedError: string | null = null;
     await act(async () => {
-      await activeStartFn!();
+      try {
+        await recordingService.startRecordingWithDevices(null, null, 'Meeting Concorrente');
+      } catch (err: any) {
+        rejectedError = err?.message || String(err);
+      }
     });
 
-    // 4. Garante que as transcrições e o ID da reunião ativa não foram apagados
+    assert.ok(rejectedError && rejectedError.includes('already in progress'), 'Backend deve rejeitar chamada concorrente');
+
+    // 4. Recebe mais um transcript da reunião vencedora após a rejeição da concorrente
+    await act(async () => {
+      emitTauriEvent('transcript-update', {
+        meeting_id: activeId,
+        sequence_id: 2,
+        text: 'Segunda fala após tentativa concorrente',
+        is_partial: false,
+        source: 'System Audio',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await new Promise(r => setTimeout(r, 40));
+
+    // 5. Garante que as transcrições e o ID da reunião ativa não foram apagados nem corrompidos
     assert.strictEqual(activeContext!.currentMeetingId, activeId, 'currentMeetingId da reunião ativa deve ser preservado');
-    assert.strictEqual(activeContext!.transcripts.length, 1, 'Transcrições não devem ser apagadas por início duplicado');
-    assert.strictEqual(activeContext!.transcripts[0].text, 'Fala importante da reunião ativa', 'Texto deve permanecer intacto');
+    assert.strictEqual(activeContext!.transcripts.length, 2, 'Transcrições não devem ser apagadas por início duplicado');
+    assert.strictEqual(activeContext!.transcripts[0].text, 'Fala importante da reunião ativa');
+    assert.strictEqual(activeContext!.transcripts[1].text, 'Segunda fala após tentativa concorrente');
+  });
+
+  it('Cenário G — concorrência botão + sidebar: coordenador único trava início simultâneo', async () => {
+    await act(async () => {
+      renderer = create(renderApp());
+    });
+
+    startRecordingCallCount = 0;
+
+    // Dispara start manual e evento de sidebar simultaneamente
+    await act(async () => {
+      const p1 = activeStartFn!();
+      window.dispatchEvent(new Event('start-recording-from-sidebar'));
+      await p1;
+    });
+
+    // Deve ter invocado o start nativo apenas 1 vez graças ao isStartingRef coordenador
+    assert.strictEqual(startRecordingCallCount, 1, 'Deve haver exatamente 1 invocação do start nativo');
+    assert.ok(activeContext!.currentMeetingId, 'Reunião deve ter sido iniciada com sucesso');
+    assert.strictEqual(mockBackendIsRecording, true, 'isRecording deve estar ativo');
+  });
+
+  it('Cenário H — timeout e reconciliação: evita captura invisível e encerra recursos de forma segura', async () => {
+    await act(async () => {
+      renderer = create(renderApp());
+    });
+
+    // Simula backend que demora mais que o timeout especificado
+    let timeoutHappened = false;
+    try {
+      startRecordingDelayMs = 80;
+      await recordingService.startRecordingWithDevices(null, null, 'Slow Meeting', 20);
+    } catch (err: any) {
+      timeoutHappened = true;
+      assert.ok(err.message.includes('timed out'), 'Erro deve ser de timeout');
+    } finally {
+      startRecordingDelayMs = 0;
+    }
+
+    assert.ok(timeoutHappened, 'Timeout deve ter sido disparado');
+    // Reconciliação deve garantir que não há gravação fantasma deixada no backend
+    assert.strictEqual(mockBackendIsRecording, false, 'Backend não pode ficar gravando silenciosamente');
   });
 
   after(() => {

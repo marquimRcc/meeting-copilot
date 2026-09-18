@@ -27,7 +27,7 @@
         "tauri:build:hipblas": "tauri build -- --features hipblas",
         "lint": "next lint",
         "typecheck": "tsc --noEmit",
-        "test:integration": "node --import tsx --test tests/integration/session-lifecycle.test.ts"
+        "test:integration": "node --import tsx --test tests/integration/canary.test.ts tests/integration/session-lifecycle.test.ts"
     },
     "dependencies": {
         "@blocknote/core": "0.36.0",

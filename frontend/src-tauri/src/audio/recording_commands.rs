@@ -311,6 +311,51 @@ async fn prepare_audio_for_recording(
 // RECORDING COMMANDS
 // ============================================================================
 
+/// Atomic, idempotent rollback when recording startup fails after streams/manager were initialized
+async fn rollback_recording_start<R: Runtime>(
+    app: &AppHandle<R>,
+    mut local_manager: Option<RecordingManager>,
+) {
+    warn!("⚠️ Executing atomic rollback of recording start...");
+    // 1. Reset state flags
+    IS_RECORDING.store(false, Ordering::SeqCst);
+    {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = None;
+    }
+
+    // 2. Unregister transcript-update listener
+    {
+        use tauri::Listener;
+        if let Some(listener_id) = TRANSCRIPT_LISTENER_ID.lock().unwrap().take() {
+            app.unlisten(listener_id);
+            info!("🧹 Rollback: unlistened transcript-update");
+        }
+    }
+
+    // 3. Abort transcription task if it was spawned
+    {
+        if let Some(task_handle) = TRANSCRIPTION_TASK.lock().unwrap().take() {
+            task_handle.abort();
+            info!("🧹 Rollback: aborted transcription task");
+        }
+    }
+
+    // 4. Retrieve and stop recording manager streams
+    let manager_to_stop = {
+        let mut global_manager = RECORDING_MANAGER.lock().unwrap();
+        global_manager.take().or(local_manager.take())
+    };
+    if let Some(mut m) = manager_to_stop {
+        let _ = m.stop_streams_and_force_flush().await;
+        info!("🧹 Rollback: stopped audio streams and flushed buffers");
+    }
+
+    // 5. Update tray
+    crate::tray::update_tray_menu(app);
+    info!("✅ Recording start rollback completed");
+}
+
 /// Start recording with default devices
 pub async fn start_recording<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     start_recording_with_meeting_name(app, None).await
@@ -415,10 +460,17 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     });
 
     // Start recording with resolved devices (replaces start_recording_with_defaults_and_auto_save call)
-    let transcription_receiver = manager
+    let transcription_receiver = match manager
         .start_recording(microphone_device, system_device, auto_save)
         .await
-        .map_err(|error| map_recording_start_error(&app, error))?;
+    {
+        Ok(rx) => rx,
+        Err(error) => {
+            let user_err = map_recording_start_error(&app, error);
+            rollback_recording_start(&app, Some(manager)).await;
+            return Err(user_err);
+        }
+    };
 
     // Take the device event receiver BEFORE storing manager globally.
     // A background task will process device events (hot-swap) without frontend polling.
@@ -439,16 +491,22 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     // Flip recording live + reset per-session flags (speech-detected latch,
     // mic-recovery budget). Sets CURRENT_MEETING_ID atomically before IS_RECORDING.
     finalize_recording_start(&meeting_id);
-    drop(engine_lifecycle_guard);
 
     // CRITICAL: Listen for transcript-update events and save to recording manager
     // This enables transcript history persistence for page reload sync
     // Store listener ID for cleanup during stop_recording to ensure microphone is released
     {
         use tauri::Listener;
+        let expected_meeting_id = meeting_id.clone();
         let listener_id = app.listen("transcript-update", move |event: tauri::Event| {
             // Parse the transcript update from the event payload
             if let Ok(update) = serde_json::from_str::<TranscriptUpdate>(event.payload()) {
+                // Reject events from another meeting or without meeting_id
+                if update.meeting_id.as_deref() != Some(expected_meeting_id.as_str()) {
+                    warn!("🚫 Rust listener: Dropping transcript update from different/missing session (expected {}, got {:?})", expected_meeting_id, update.meeting_id);
+                    return;
+                }
+
                 let speaker = match update.source.as_str() {
                     "Microphone" => Some("Você".to_string()),
                     "System Audio" => Some("Participante".to_string()),
@@ -479,22 +537,21 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         });
         let mut global_listener = TRANSCRIPT_LISTENER_ID.lock().unwrap();
         *global_listener = Some(listener_id);
-        info!("✅ Transcript-update event listener registered for history persistence");
+        info!("✅ Transcript-update event listener registered for history persistence (session {})", meeting_id);
     }
 
     // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
-    app.emit("recording-started", serde_json::json!({
+    if let Err(e) = app.emit("recording-started", serde_json::json!({
         "message": "Recording started successfully with parallel processing",
         "devices": ["Default Microphone", "Default System Audio"],
         "workers": 3,
         "meeting_id": meeting_id,
         "meeting_name": effective_meeting_name,
-    })).map_err(|e| {
-        IS_RECORDING.store(false, Ordering::SeqCst);
-        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
-        *mid = None;
-        e.to_string()
-    })?;
+    })) {
+        rollback_recording_start(&app, None).await;
+        drop(engine_lifecycle_guard);
+        return Err(format!("Failed to emit recording-started: {}", e));
+    }
 
     // Update tray menu to reflect recording state
     crate::tray::update_tray_menu(&app);
@@ -507,6 +564,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     }
 
     info!("✅ Recording started successfully with async-first approach");
+    drop(engine_lifecycle_guard);
 
     Ok(())
 }
@@ -618,10 +676,17 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     });
 
     // Start recording with specified devices and auto_save setting
-    let transcription_receiver = manager
+    let transcription_receiver = match manager
         .start_recording(mic_device, system_device, auto_save)
         .await
-        .map_err(|error| map_recording_start_error(&app, error))?;
+    {
+        Ok(rx) => rx,
+        Err(error) => {
+            let user_err = map_recording_start_error(&app, error);
+            rollback_recording_start(&app, Some(manager)).await;
+            return Err(user_err);
+        }
+    };
 
     // Take the device event receiver BEFORE storing manager globally.
     // A background task will process device events (hot-swap) without frontend polling.
@@ -642,16 +707,22 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     // Flip recording live + reset per-session flags (speech-detected latch,
     // mic-recovery budget). Sets CURRENT_MEETING_ID atomically before IS_RECORDING.
     finalize_recording_start(&meeting_id);
-    drop(engine_lifecycle_guard);
 
     // CRITICAL: Listen for transcript-update events and save to recording manager
     // This enables transcript history persistence for page reload sync
     // Store listener ID for cleanup during stop_recording to ensure microphone is released
     {
         use tauri::Listener;
+        let expected_meeting_id = meeting_id.clone();
         let listener_id = app.listen("transcript-update", move |event: tauri::Event| {
             // Parse the transcript update from the event payload
             if let Ok(update) = serde_json::from_str::<TranscriptUpdate>(event.payload()) {
+                // Reject events from another meeting or without meeting_id
+                if update.meeting_id.as_deref() != Some(expected_meeting_id.as_str()) {
+                    warn!("🚫 Rust listener: Dropping transcript update from different/missing session (expected {}, got {:?})", expected_meeting_id, update.meeting_id);
+                    return;
+                }
+
                 let speaker = match update.source.as_str() {
                     "Microphone" => Some("Você".to_string()),
                     "System Audio" => Some("Participante".to_string()),
@@ -682,11 +753,11 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         });
         let mut global_listener = TRANSCRIPT_LISTENER_ID.lock().unwrap();
         *global_listener = Some(listener_id);
-        info!("✅ Transcript-update event listener registered for history persistence");
+        info!("✅ Transcript-update event listener registered for history persistence (session {})", meeting_id);
     }
 
     // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
-    app.emit("recording-started", serde_json::json!({
+    if let Err(e) = app.emit("recording-started", serde_json::json!({
         "message": "Recording started with custom devices and parallel processing",
         "devices": [
             mic_device_name.unwrap_or_else(|| "Default Microphone".to_string()),
@@ -695,12 +766,11 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         "workers": 3,
         "meeting_id": meeting_id,
         "meeting_name": effective_meeting_name,
-    })).map_err(|e| {
-        IS_RECORDING.store(false, Ordering::SeqCst);
-        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
-        *mid = None;
-        e.to_string()
-    })?;
+    })) {
+        rollback_recording_start(&app, None).await;
+        drop(engine_lifecycle_guard);
+        return Err(format!("Failed to emit recording-started: {}", e));
+    }
 
     // Update tray menu to reflect recording state
     crate::tray::update_tray_menu(&app);
@@ -713,6 +783,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     }
 
     info!("✅ Recording started with custom devices using async-first approach");
+    drop(engine_lifecycle_guard);
 
     Ok(())
 }
@@ -722,6 +793,9 @@ pub async fn stop_recording<R: Runtime>(
     app: AppHandle<R>,
     _args: RecordingArgs,
 ) -> Result<(), String> {
+    // Acquire the engine lifecycle lock so stop cannot interleave with a racing start
+    let _engine_lifecycle_guard = super::common::acquire_engine_lifecycle_lock().await;
+
     info!(
         "🛑 Starting optimized recording shutdown - ensuring ALL transcript chunks are preserved"
     );

@@ -104,8 +104,17 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
         // Listen for recording-started event
         unlistenRecordingStarted = await recordingService.onRecordingStarted(async (payload) => {
           try {
-            // Adopt meeting ID from backend payload synchronously in ref and state
-            const meetingId = payload?.meeting_id || `meeting-${Date.now()}`;
+            // Adopt meeting ID from backend payload or query backend directly — never invent local meeting ID
+            let meetingId = payload?.meeting_id;
+            if (!meetingId) {
+              const backendMeetingId = await recordingService.getCurrentMeetingId();
+              if (backendMeetingId) {
+                meetingId = backendMeetingId;
+              } else {
+                console.error('[Recording Started] ❌ Rejected recording-started event with missing meeting_id and no active backend meeting');
+                return;
+              }
+            }
             activeMeetingIdRef.current = meetingId;
             isRecordingActiveRef.current = true;
             setCurrentMeetingId(meetingId);
@@ -625,14 +634,22 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     console.log('🧹 Transcripts and active meeting session cleared');
   }, []);
 
-  // Restore transcripts (used when duplicate start fails because recording was already active)
+  // Restore transcripts only if they belong strictly to the active meeting session
   const restoreTranscripts = useCallback((backup: Transcript[]) => {
-    if (backup && backup.length > 0) {
-      setTranscripts(backup);
-      transcriptsRef.current = backup;
-      console.log(`🔄 Transcripts restored from backup (${backup.length} segments)`);
+    const activeId = activeMeetingIdRef.current || currentMeetingId;
+    if (!activeId) {
+      console.warn('⚠️ restoreTranscripts ignored: no active meeting session');
+      return;
     }
-  }, []);
+    const safeBackup = backup.filter(t => t.meeting_id === activeId);
+    if (safeBackup.length > 0) {
+      setTranscripts(safeBackup);
+      transcriptsRef.current = safeBackup;
+      console.log(`🔄 Transcripts restored from backup for active session ${activeId} (${safeBackup.length} segments)`);
+    } else {
+      console.warn(`⚠️ restoreTranscripts: backup segments do not belong to active session ${activeId}, discarding to prevent contamination`);
+    }
+  }, [currentMeetingId]);
 
   // Mark current meeting as saved in IndexedDB
   const markMeetingAsSaved = useCallback(async () => {

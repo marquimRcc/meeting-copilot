@@ -36,20 +36,63 @@ export interface RecordingStartedPayload {
 // the UI into ERROR instead of an eternal STARTING spinner.
 const START_TIMEOUT_MS = 120000;
 
-// ponytail: on timeout we only reject — no auto stop_recording. Calling stop
-// against a stuck start could itself block; the ERROR state lets the user
-// retry and the backend engine-lifecycle lock serializes that retry.
-function withStartTimeout<T>(promise: Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('Recording start timed out after 120s')),
-      START_TIMEOUT_MS
-    );
-    promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); }
-    );
+let activeStartOperationId = 0;
+let isStartInFlight = false;
+
+export function getActiveStartOperationId(): number {
+  return activeStartOperationId;
+}
+
+export function isStartOperationInFlight(): boolean {
+  return isStartInFlight;
+}
+
+/**
+ * Executes a recording start invoke with timeout protection, operation tracking,
+ * and mandatory reconciliation if the operation times out.
+ */
+export async function executeWithStartTimeout<T>(
+  operation: (opId: number) => Promise<T>,
+  timeoutMs: number = START_TIMEOUT_MS
+): Promise<T> {
+  const operationId = ++activeStartOperationId;
+  isStartInFlight = true;
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(async () => {
+      console.warn(`[RecordingService] Start operation #${operationId} timed out after ${timeoutMs}ms`);
+      // Reconcile with backend: ensure no invisible background recording remains running
+      try {
+        const state = await invoke<RecordingState>('get_recording_state');
+        if (state?.is_recording) {
+          console.warn('[RecordingService] Backend recording was active after timeout; issuing safe stop to prevent ghost capture');
+          await invoke('stop_recording', { args: { save_path: '' } }).catch((e) => {
+            console.error('[RecordingService] Failed to stop ghost recording after timeout:', e);
+          });
+        }
+      } catch (err) {
+        console.warn('[RecordingService] Failed to inspect backend state after timeout:', err);
+      } finally {
+        isStartInFlight = false;
+      }
+      reject(new Error(`Recording start timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
   });
+
+  try {
+    const result = await Promise.race([operation(operationId), timeoutPromise]);
+    if (timer) clearTimeout(timer);
+    return result;
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    throw err;
+  } finally {
+    if (operationId === activeStartOperationId) {
+      isStartInFlight = false;
+    }
+  }
 }
 
 /**
@@ -93,8 +136,11 @@ export class RecordingService {
    * Start recording (no device configuration)
    * @returns Promise<void>
    */
-  async startRecording(): Promise<void> {
-    return withStartTimeout(invoke('start_recording'));
+  async startRecording(timeoutMs?: number): Promise<void> {
+    return executeWithStartTimeout(
+      (_opId) => invoke('start_recording'),
+      timeoutMs
+    );
   }
 
   /**
@@ -107,13 +153,17 @@ export class RecordingService {
   async startRecordingWithDevices(
     micDeviceName: string | null,
     systemDeviceName: string | null,
-    meetingName: string
+    meetingName: string,
+    timeoutMs?: number
   ): Promise<void> {
-    return withStartTimeout(invoke('start_recording_with_devices_and_meeting', {
-      micDeviceName,
-      systemDeviceName,
-      meetingName
-    }));
+    return executeWithStartTimeout(
+      (_opId) => invoke('start_recording_with_devices_and_meeting', {
+        micDeviceName,
+        systemDeviceName,
+        meetingName
+      }),
+      timeoutMs
+    );
   }
 
   /**

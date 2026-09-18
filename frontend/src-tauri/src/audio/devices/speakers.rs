@@ -35,7 +35,44 @@ pub fn default_output_device() -> Result<AudioDevice> {
         return Ok(AudioDevice::new(device.name()?, DeviceType::Output));
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    {
+        // On Linux, system audio capture must use a PulseAudio/ALSA monitor input device.
+        if let Ok(pulse_host) = cpal::host_from_id(cpal::HostId::Alsa) {
+            if let Ok(inputs) = pulse_host.input_devices() {
+                for device in inputs {
+                    if let Ok(name) = device.name() {
+                        if name.contains("monitor") {
+                            info!("✅ Found Linux system audio monitor device: {}", name);
+                            return Ok(AudioDevice::new(name, DeviceType::Output));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check default host inputs for a monitor device
+        let host = cpal::default_host();
+        if let Ok(inputs) = host.input_devices() {
+            for device in inputs {
+                if let Ok(name) = device.name() {
+                    if name.contains("monitor") {
+                        info!("✅ Found Linux default host monitor device: {}", name);
+                        return Ok(AudioDevice::new(name, DeviceType::Output));
+                    }
+                }
+            }
+        }
+
+        // Fallback to default output device name
+        if let Some(device) = host.default_output_device() {
+            return Ok(AudioDevice::new(device.name()?, DeviceType::Output));
+        }
+
+        Err(anyhow!("No default audio output/monitor device found on Linux"))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let host = cpal::default_host();
         let device = host
