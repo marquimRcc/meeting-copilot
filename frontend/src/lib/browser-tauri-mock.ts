@@ -91,9 +91,133 @@ if (typeof window !== 'undefined') {
             return null;
           case 'get_transcript_history':
             return [];
+          case 'get_onboarding_status': {
+            if (typeof localStorage !== 'undefined') {
+              const saved = localStorage.getItem('mock_onboarding_status');
+              if (saved) {
+                try {
+                  return JSON.parse(saved);
+                } catch (e) {
+                  // ignore JSON parse errors
+                }
+              }
+            }
+            return null;
+          }
+          case 'save_onboarding_status_cmd': {
+            if (typeof localStorage !== 'undefined' && (args as any)?.status) {
+              try {
+                localStorage.setItem('mock_onboarding_status', JSON.stringify((args as any).status));
+              } catch (e) {
+                // ignore storage quota errors
+              }
+            }
+            return true;
+          }
+          case 'complete_onboarding': {
+            if (typeof localStorage !== 'undefined') {
+              try {
+                const prev = localStorage.getItem('mock_onboarding_status');
+                let statusObj: any = {};
+                if (prev) {
+                  try {
+                    statusObj = JSON.parse(prev);
+                  } catch (e) {}
+                }
+                statusObj.completed = true;
+                statusObj.current_step = 4;
+                statusObj.model_status = {
+                  parakeet: 'downloaded',
+                  summary: 'downloaded',
+                  selected_summary_model: (args as any)?.model || 'gemma-2-2b-it',
+                };
+                localStorage.setItem('mock_onboarding_status', JSON.stringify(statusObj));
+              } catch (e) {}
+            }
+            return true;
+          }
+          case 'builtin_ai_get_recommended_model':
+            return 'gemma-2-2b-it';
+          case 'builtin_ai_is_model_ready':
+            return true;
+          case 'builtin_ai_download_model': {
+            const modelName = (args as any)?.modelName || 'gemma-2-2b-it';
+            setTimeout(async () => {
+              try {
+                const { emit } = await import('@tauri-apps/api/event');
+                await emit('builtin-ai-download-progress', {
+                  model: modelName,
+                  progress: 100,
+                  downloaded_mb: 1500,
+                  total_mb: 1500,
+                  speed_mbps: 35,
+                  status: 'completed',
+                });
+              } catch (e) {
+                console.warn('[MockIPC] Failed to emit builtin_ai progress:', e);
+              }
+            }, 400);
+            return true;
+          }
           case 'parakeet_init':
             return null;
           case 'parakeet_has_available_models':
+            return true;
+          case 'parakeet_validate_model_ready':
+            return 'ready';
+          case 'parakeet_get_available_models':
+            return [
+              {
+                name: 'parakeet-tdt-0.6b-v3-int8',
+                status: 'Available',
+                size_mb: 670,
+                speed: 'Ultra Fast (v3)',
+                quantization: 'Int8',
+                description: 'Real time on M4 Max, latest version with int8 quantization',
+                path: '/mock/models/parakeet',
+              },
+            ];
+          case 'parakeet_download_model':
+          case 'parakeet_retry_download': {
+            const modelName = (args as any)?.modelName || 'parakeet-tdt-0.6b-v3-int8';
+            setTimeout(async () => {
+              try {
+                const { emit } = await import('@tauri-apps/api/event');
+                await emit('parakeet-model-download-progress', {
+                  modelName,
+                  progress: 45,
+                  downloaded_bytes: 300 * 1024 * 1024,
+                  total_bytes: 670 * 1024 * 1024,
+                  downloaded_mb: 300.0,
+                  total_mb: 670.0,
+                  speed_mbps: 25.0,
+                  status: 'downloading',
+                });
+                setTimeout(async () => {
+                  await emit('parakeet-model-download-progress', {
+                    modelName,
+                    progress: 100,
+                    downloaded_bytes: 670 * 1024 * 1024,
+                    total_bytes: 670 * 1024 * 1024,
+                    downloaded_mb: 670.0,
+                    total_mb: 670.0,
+                    speed_mbps: 30.0,
+                    status: 'completed',
+                  });
+                  await emit('parakeet-model-download-complete', { modelName });
+                }, 500);
+              } catch (e) {
+                console.warn('[MockIPC] Failed to emit parakeet progress:', e);
+              }
+            }, 300);
+            return true;
+          }
+          case 'get_recording_preferences':
+            return { micDevice: 'none' };
+          case 'set_recording_preferences':
+          case 'set_language_preference':
+          case 'set_notification_settings':
+          case 'initialize_fresh_database':
             return true;
           case 'get_ollama_models':
             return [];
@@ -111,15 +235,6 @@ if (typeof window !== 'undefined') {
           case 'track_meeting_deleted':
           case 'track_settings_changed':
           case 'track_feature_used':
-            return true;
-          case 'get_recording_preferences':
-            return { micDevice: 'none' };
-          case 'set_recording_preferences':
-          case 'set_language_preference':
-          case 'set_notification_settings':
-          case 'save_onboarding_status_cmd':
-          case 'complete_onboarding':
-          case 'initialize_fresh_database':
             return true;
           default:
             return null;

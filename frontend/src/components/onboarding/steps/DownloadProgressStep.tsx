@@ -55,10 +55,23 @@ export function DownloadProgressStep() {
   });
 
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isStalled, setIsStalled] = useState(false);
   const parakeetDownloadStartedRef = useRef(false);
   const summaryDownloadStartedRef = useRef(false);
   const retryingRef = useRef(false);
   const retryingSummaryRef = useRef(false);
+
+  // Detect if transcription download is stalled at 0% for more than 4 seconds
+  useEffect(() => {
+    if (parakeetState.status === 'downloading' && parakeetState.progress === 0 && !parakeetDownloaded) {
+      const timer = setTimeout(() => {
+        setIsStalled(true);
+      }, 4000);
+      return () => clearTimeout(timer);
+    } else {
+      setIsStalled(false);
+    }
+  }, [parakeetState.status, parakeetState.progress, parakeetDownloaded]);
 
   // Retry download handler
   const handleRetryDownload = async () => {
@@ -70,11 +83,12 @@ export function DownloadProgressStep() {
 
     console.log('[DownloadProgressStep] Retrying Parakeet download');
     retryingRef.current = true;
+    setIsStalled(false);
 
     // Reset error state
     setParakeetState((prev) => ({
       ...prev,
-      status: 'waiting',
+      status: 'downloading',
       error: undefined,
       progress: 0,
       downloadedMb: 0,
@@ -82,6 +96,7 @@ export function DownloadProgressStep() {
     }));
 
     try {
+      await invoke('parakeet_init');
       await invoke('parakeet_retry_download', { modelName: PARAKEET_MODEL });
       // Progress events will update state
     } catch (error) {
@@ -89,7 +104,7 @@ export function DownloadProgressStep() {
       setParakeetState((prev) => ({
         ...prev,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Retry failed',
+        error: error instanceof Error ? error.message : 'Falha ao tentar novamente',
       }));
 
       toast.error('Falha ao tentar baixar novamente', {
@@ -137,7 +152,7 @@ export function DownloadProgressStep() {
       setSummaryState((prev) => ({
         ...prev,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Retry failed',
+        error: error instanceof Error ? error.message : 'Falha ao tentar novamente',
       }));
 
       toast.error('Falha ao baixar modelo de resumo', {
@@ -165,24 +180,49 @@ export function DownloadProgressStep() {
     checkPlatform();
   }, []);
 
-  // Start the required transcription model immediately; summary readiness must not block it.
+  // Check model availability on mount and start download if needed
   useEffect(() => {
     if (parakeetDownloadStartedRef.current) return;
     parakeetDownloadStartedRef.current = true;
 
-    if (!parakeetDownloaded) {
-      setParakeetState((prev) => ({ ...prev, status: 'downloading' }));
-    }
-
-    startBackgroundDownloads({
-      includeParakeet: true,
-      includeSummary: false,
-    }).catch((error) => {
-      console.error('Failed to start Parakeet download:', error);
-      if (!parakeetDownloaded) {
-        setParakeetState((prev) => ({ ...prev, status: 'error', error: String(error) }));
+    const checkAndStart = async () => {
+      try {
+        await invoke('parakeet_init');
+        const available = await invoke<boolean>('parakeet_has_available_models');
+        if (available) {
+          console.log('[DownloadProgressStep] Parakeet model already available on mount');
+          setParakeetDownloaded(true);
+          setParakeetState({
+            status: 'completed',
+            progress: 100,
+            downloadedMb: 670,
+            totalMb: 670,
+            speedMbps: 0,
+          });
+          return;
+        }
+      } catch (e) {
+        console.warn('[DownloadProgressStep] Initial availability check failed:', e);
       }
-    });
+
+      if (!parakeetDownloaded) {
+        setParakeetState((prev) => ({ ...prev, status: 'downloading' }));
+      }
+
+      try {
+        await startBackgroundDownloads({
+          includeParakeet: true,
+          includeSummary: false,
+        });
+      } catch (error) {
+        console.error('Failed to start Parakeet download:', error);
+        if (!parakeetDownloaded) {
+          setParakeetState((prev) => ({ ...prev, status: 'error', error: String(error) }));
+        }
+      }
+    };
+
+    checkAndStart();
   }, []);
 
   // Start the selected summary model only after the backend recommendation is known.
@@ -337,6 +377,30 @@ export function DownloadProgressStep() {
     }
   };
 
+  const handleContinueInBackground = async () => {
+    setIsCompleting(true);
+    toast.info('Os downloads continuarão em segundo plano', {
+      description: 'Você pode começar a usar o aplicativo. A gravação estará disponível assim que o reconhecimento de fala estiver pronto.',
+      duration: 5000,
+    });
+
+    if (isMac) {
+      goNext();
+    } else {
+      try {
+        await completeOnboarding();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        window.location.reload();
+      } catch (error) {
+        console.error('Failed to complete onboarding:', error);
+        toast.error('Falha ao concluir configuração', {
+          description: 'Por favor, tente novamente.',
+        });
+        setIsCompleting(false);
+      }
+    }
+  };
+
   const handleContinue = async () => {
     // Verify actual model availability (catches state drift)
     try {
@@ -351,14 +415,6 @@ export function DownloadProgressStep() {
           status: 'completed',
           progress: 100,
         }));
-      } else if (
-        !actuallyAvailable &&
-        (parakeetState.status === 'error' || parakeetState.status === 'cancelled')
-      ) {
-        toast.error('Mecanismo de transcrição obrigatório', {
-          description: 'Por favor, tente baixar novamente antes de continuar.',
-        });
-        return;
       }
     } catch (error) {
       console.warn('[DownloadProgressStep] Failed to verify model:', error);
@@ -465,6 +521,20 @@ export function DownloadProgressStep() {
         </div>
       )}
 
+      {/* Se o download estiver travado no início (downloading em 0% por mais de 4s), avisar e oferecer retry */}
+      {title === 'Motor de Transcrição' && isStalled && state.status === 'downloading' && (
+        <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 flex items-center justify-between">
+          <span>Início lento ou conexão instável?</span>
+          <button
+            type="button"
+            onClick={handleRetryDownload}
+            className="font-medium underline hover:text-amber-950 ml-2 whitespace-nowrap"
+          >
+            Reiniciar download
+          </button>
+        </div>
+      )}
+
       {(state.status === 'error' || state.status === 'cancelled') && (
         <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
           <p className="text-sm text-red-600 font-medium">
@@ -537,19 +607,59 @@ export function DownloadProgressStep() {
           )}
         </AnimatePresence>
 
-        {/* Continue Button */}
-        <div className="w-full max-w-xs">
+        {/* Continue Actions */}
+        <div className="w-full max-w-sm flex flex-col items-center space-y-3">
           <Button
-            onClick={handleContinue}
-            disabled={!parakeetDownloaded || isCompleting}
-            className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={parakeetDownloaded ? handleContinue : handleContinueInBackground}
+            disabled={isCompleting}
+            className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {(isCompleting || !parakeetDownloaded) ? (
+            {isCompleting ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
+            ) : parakeetDownloaded ? (
               'Continuar'
+            ) : isStalled ? (
+              'Continuar em segundo plano'
+            ) : (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Baixando Motor de Transcrição...
+              </span>
             )}
           </Button>
+
+          {/* Opções de auxílio se não estiver concluído */}
+          {!parakeetDownloaded && (
+            <div className="flex flex-col items-center gap-2 text-center w-full">
+              {isStalled && (
+                <p className="text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded border border-amber-200">
+                  O download pode continuar enquanto você utiliza o aplicativo.
+                </p>
+              )}
+              <div className="flex items-center justify-center gap-4 w-full">
+                <button
+                  type="button"
+                  onClick={handleRetryDownload}
+                  disabled={isCompleting}
+                  className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 font-medium transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Tentar Novamente
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContinueInBackground}
+                  disabled={isCompleting}
+                  className="text-xs text-gray-600 hover:text-gray-900 underline font-medium transition-colors"
+                >
+                  Continuar em segundo plano
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </OnboardingContainer>

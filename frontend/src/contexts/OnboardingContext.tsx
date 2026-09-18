@@ -374,6 +374,17 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         await checkActiveDownloads();
       } else {
         await initializeSummaryModelSelection();
+        try {
+          await invoke('parakeet_init');
+          const isParakeetReady = await invoke<boolean>('parakeet_has_available_models');
+          if (isParakeetReady) {
+            console.log('[OnboardingContext] Parakeet is ready on initial launch');
+            setParakeetDownloaded(true);
+            setParakeetProgress(100);
+          }
+        } catch (e) {
+          console.warn('[OnboardingContext] Initial check for Parakeet failed:', e);
+        }
       }
     } catch (error) {
       console.error('[OnboardingContext] Failed to load onboarding status:', error);
@@ -538,7 +549,9 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       // Start Parakeet download first (speech recognition - always required)
       if (shouldStartParakeet) {
         console.log('[OnboardingContext] Starting Parakeet download');
-        invoke('parakeet_download_model', { modelName: PARAKEET_MODEL })
+        invoke('parakeet_init')
+          .catch(err => console.warn('[OnboardingContext] parakeet_init warning:', err))
+          .then(() => invoke('parakeet_download_model', { modelName: PARAKEET_MODEL }))
           .catch(err => console.error('[OnboardingContext] Parakeet download failed:', err));
       }
 

@@ -51,6 +51,18 @@ pub async fn parakeet_init() -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) async fn ensure_engine() -> Result<Arc<ParakeetEngine>, String> {
+    {
+        let guard = PARAKEET_ENGINE.lock().unwrap();
+        if let Some(engine) = guard.as_ref().cloned() {
+            return Ok(engine);
+        }
+    }
+    parakeet_init().await?;
+    let guard = PARAKEET_ENGINE.lock().unwrap();
+    guard.as_ref().cloned().ok_or_else(|| "Parakeet engine not initialized".to_string())
+}
+
 #[command]
 pub async fn parakeet_get_available_models() -> Result<Vec<ModelInfo>, String> {
     let engine = {
@@ -152,27 +164,23 @@ pub async fn parakeet_is_model_loaded() -> Result<bool, String> {
 
 #[command]
 pub async fn parakeet_has_available_models() -> Result<bool, String> {
-    let engine = {
-        let guard = PARAKEET_ENGINE.lock().unwrap();
-        guard.as_ref().cloned()
+    let engine = match ensure_engine().await {
+        Ok(engine) => engine,
+        Err(_) => return Ok(false),
     };
 
-    if let Some(engine) = engine {
-        let models = engine
-            .discover_models()
-            .await
-            .map_err(|e| format!("Failed to discover Parakeet models: {}", e))?;
+    let models = engine
+        .discover_models()
+        .await
+        .map_err(|e| format!("Failed to discover Parakeet models: {}", e))?;
 
-        // Check if at least one model is available
-        let available_models: Vec<_> = models
-            .iter()
-            .filter(|model| matches!(model.status, crate::parakeet_engine::ModelStatus::Available))
-            .collect();
+    // Check if at least one model is available
+    let available_models: Vec<_> = models
+        .iter()
+        .filter(|model| matches!(model.status, crate::parakeet_engine::ModelStatus::Available))
+        .collect();
 
-        Ok(!available_models.is_empty())
-    } else {
-        Ok(false)
-    }
+    Ok(!available_models.is_empty())
 }
 
 #[command]
@@ -380,102 +388,109 @@ pub async fn parakeet_download_model<R: Runtime>(
     app_handle: AppHandle<R>,
     model_name: String,
 ) -> Result<(), String> {
-    let engine = {
-        let guard = PARAKEET_ENGINE.lock().unwrap();
-        guard.as_ref().cloned()
-    };
-
-    if let Some(engine) = engine {
-        // Create progress callback that emits detailed events
-        let app_handle_clone = app_handle.clone();
-        let model_name_clone = model_name.clone();
-
-        let progress_callback = Box::new(move |progress: DownloadProgress| {
-            log::info!(
-                "Parakeet download progress for {}: {:.1} MB / {:.1} MB ({:.1} MB/s) - {}%",
-                model_name_clone, progress.downloaded_mb, progress.total_mb,
-                progress.speed_mbps, progress.percent
-            );
-
-            // Emit download progress event with detailed info
-            if let Err(e) = app_handle_clone.emit(
-                "parakeet-model-download-progress",
+    let engine = match ensure_engine().await {
+        Ok(engine) => engine,
+        Err(error) => {
+            if let Err(emit_error) = app_handle.emit(
+                "parakeet-model-download-error",
                 serde_json::json!({
-                    "modelName": model_name_clone,
-                    "progress": progress.percent,
-                    "downloaded_bytes": progress.downloaded_bytes,
-                    "total_bytes": progress.total_bytes,
-                    "downloaded_mb": progress.downloaded_mb,
-                    "total_mb": progress.total_mb,
-                    "speed_mbps": progress.speed_mbps,
-                    "status": if progress.percent == 100 { "completed" } else { "downloading" }
+                    "modelName": model_name,
+                    "error": error.clone()
                 }),
             ) {
-                log::error!("Failed to emit parakeet download progress event: {}", e);
+                log::error!("Failed to emit parakeet download error event: {}", emit_error);
             }
-        });
-
-        // Ensure models are discovered before downloading
-        // This populates available_models so we don't get "Model not found" error
-        if let Err(e) = engine.discover_models().await {
-            log::warn!("Failed to discover models before download: {}", e);
-            // Continue anyway, maybe it will work if the model is already known
+            return Err(format!("Failed to initialize Parakeet engine: {}", error));
         }
+    };
 
-        let result = engine
-            .download_model_detailed(&model_name, Some(progress_callback))
-            .await;
+    // Create progress callback that emits detailed events
+    let app_handle_clone = app_handle.clone();
+    let model_name_clone = model_name.clone();
 
-        match result {
-            Ok(()) => {
-                // Emit completion event
-                if let Err(e) = app_handle.emit(
-                    "parakeet-model-download-complete",
-                    serde_json::json!({
-                        "modelName": model_name
-                    }),
-                ) {
-                    log::error!("Failed to emit parakeet download complete event: {}", e);
-                }
+    let progress_callback = Box::new(move |progress: DownloadProgress| {
+        log::info!(
+            "Parakeet download progress for {}: {:.1} MB / {:.1} MB ({:.1} MB/s) - {}%",
+            model_name_clone, progress.downloaded_mb, progress.total_mb,
+            progress.speed_mbps, progress.percent
+        );
 
-                // Update tray menu to reflect model is now available
-                log::info!("Parakeet model download complete - updating tray menu");
-                crate::tray::update_tray_menu(&app_handle);
-
-                Ok(())
-            }
-            Err(error) if is_download_cancelled(&error) => {
-                if let Err(emit_error) = app_handle.emit(
-                    "parakeet-model-download-progress",
-                    serde_json::json!({
-                        "modelName": model_name,
-                        "progress": 0,
-                        "status": "cancelled"
-                    }),
-                ) {
-                    log::error!(
-                        "Failed to emit Parakeet cancellation event: {}",
-                        emit_error
-                    );
-                }
-                log::info!("Parakeet download cancelled: {}", model_name);
-                Ok(())
-            }
-            Err(error) => {
-                if let Err(emit_error) = app_handle.emit(
-                    "parakeet-model-download-error",
-                    serde_json::json!({
-                        "modelName": model_name,
-                        "error": error.to_string()
-                    }),
-                ) {
-                    log::error!("Failed to emit parakeet download error event: {}", emit_error);
-                }
-                Err(format!("Failed to download Parakeet model: {}", error))
-            }
+        // Emit download progress event with detailed info
+        if let Err(e) = app_handle_clone.emit(
+            "parakeet-model-download-progress",
+            serde_json::json!({
+                "modelName": model_name_clone,
+                "progress": progress.percent,
+                "downloaded_bytes": progress.downloaded_bytes,
+                "total_bytes": progress.total_bytes,
+                "downloaded_mb": progress.downloaded_mb,
+                "total_mb": progress.total_mb,
+                "speed_mbps": progress.speed_mbps,
+                "status": if progress.percent == 100 { "completed" } else { "downloading" }
+            }),
+        ) {
+            log::error!("Failed to emit parakeet download progress event: {}", e);
         }
-    } else {
-        Err("Parakeet engine not initialized".to_string())
+    });
+
+    // Ensure models are discovered before downloading
+    // This populates available_models so we don't get "Model not found" error
+    if let Err(e) = engine.discover_models().await {
+        log::warn!("Failed to discover models before download: {}", e);
+        // Continue anyway, maybe it will work if the model is already known
+    }
+
+    let result = engine
+        .download_model_detailed(&model_name, Some(progress_callback))
+        .await;
+
+    match result {
+        Ok(()) => {
+            // Emit completion event
+            if let Err(e) = app_handle.emit(
+                "parakeet-model-download-complete",
+                serde_json::json!({
+                    "modelName": model_name
+                }),
+            ) {
+                log::error!("Failed to emit parakeet download complete event: {}", e);
+            }
+
+            // Update tray menu to reflect model is now available
+            log::info!("Parakeet model download complete - updating tray menu");
+            crate::tray::update_tray_menu(&app_handle);
+
+            Ok(())
+        }
+        Err(error) if is_download_cancelled(&error) => {
+            if let Err(emit_error) = app_handle.emit(
+                "parakeet-model-download-progress",
+                serde_json::json!({
+                    "modelName": model_name,
+                    "progress": 0,
+                    "status": "cancelled"
+                }),
+            ) {
+                log::error!(
+                    "Failed to emit Parakeet cancellation event: {}",
+                    emit_error
+                );
+            }
+            log::info!("Parakeet download cancelled: {}", model_name);
+            Ok(())
+        }
+        Err(error) => {
+            if let Err(emit_error) = app_handle.emit(
+                "parakeet-model-download-error",
+                serde_json::json!({
+                    "modelName": model_name,
+                    "error": error.to_string()
+                }),
+            ) {
+                log::error!("Failed to emit parakeet download error event: {}", emit_error);
+            }
+            Err(format!("Failed to download Parakeet model: {}", error))
+        }
     }
 }
 
@@ -501,19 +516,7 @@ pub async fn parakeet_retry_download<R: Runtime>(
     model_name: String,
 ) -> Result<(), String> {
     log::info!("Retrying download for: {}", model_name);
-
-    let engine = {
-        let guard = PARAKEET_ENGINE.lock().unwrap();
-        guard.as_ref().cloned()
-    };
-
-    if engine.is_some() {
-        // Retry uses the normal download entrypoint, whose owner reservation rejects
-        // a second writer until cancellation cleanup has completed.
-        parakeet_download_model(app_handle, model_name).await
-    } else {
-        Err("Parakeet engine not initialized".to_string())
-    }
+    parakeet_download_model(app_handle, model_name).await
 }
 
 #[command]
