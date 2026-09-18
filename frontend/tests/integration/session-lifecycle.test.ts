@@ -510,7 +510,7 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     assert.strictEqual(activeContext!.transcripts[0].text, 'Fala importante da reunião ativa');
 
     // 3. Simula chamada concorrente direta ao backend que recebe erro 'Recording already in progress'
-    let rejectedError: string | null = null;
+    let rejectedError: any = null;
     await act(async () => {
       try {
         await recordingService.startRecordingWithDevices(null, null, 'Meeting Concorrente');
@@ -519,7 +519,7 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
       }
     });
 
-    assert.ok(rejectedError && rejectedError.includes('already in progress'), 'Backend deve rejeitar chamada concorrente');
+    assert.ok(rejectedError && String(rejectedError).includes('already in progress'), 'Backend deve rejeitar chamada concorrente');
 
     // 4. Recebe mais um transcript da reunião vencedora após a rejeição da concorrente
     await act(async () => {
