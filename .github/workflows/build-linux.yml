@@ -28,7 +28,7 @@ on:
           - appimage
           - rpm
           - all
-        default: all
+        default: appimage
       sign-build:
         description: 'Sign the build'
         required: true
@@ -50,6 +50,7 @@ env:
   CARGO_TERM_COLOR: always
   WHISPER_NO_AVX: ON
   WHISPER_NO_AVX2: ON
+  APPIMAGE_EXTRACT_AND_RUN: 1
 
 jobs:
   build-linux:
@@ -87,13 +88,10 @@ jobs:
 
           # Determine bundle arguments
           BUNDLE_TYPE="${{ github.event.inputs.bundle-type }}"
-          if [[ "$BUNDLE_TYPE" == "all" ]] || [[ -z "$BUNDLE_TYPE" ]]; then
-            # Default based on Ubuntu version
-            if [[ "${{ github.event.inputs.ubuntu-version }}" == "ubuntu-24.04" ]]; then
-              BUNDLES="appimage,rpm"
-            else
-              BUNDLES="deb"
-            fi
+          if [[ "$BUNDLE_TYPE" == "all" ]]; then
+            BUNDLES="deb,appimage"
+          elif [[ -z "$BUNDLE_TYPE" ]]; then
+            BUNDLES="appimage"
           else
             BUNDLES="$BUNDLE_TYPE"
           fi
@@ -197,6 +195,29 @@ jobs:
           
           echo "Copied llama-helper to frontend/src-tauri/binaries/"
           ls -la frontend/src-tauri/binaries/
+
+      - name: Configure updater signing
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ] && [ "${{ github.event.inputs.sign-build }}" == "true" ]; then
+            echo "Signing key provided and sign-build=true. Enabling updater artifacts..."
+            node -e '
+              const fs = require("fs");
+              const p = "frontend/src-tauri/tauri.conf.json";
+              const conf = JSON.parse(fs.readFileSync(p, "utf8"));
+              conf.bundle.createUpdaterArtifacts = true;
+              fs.writeFileSync(p, JSON.stringify(conf, null, 4));
+            '
+          else
+            echo "No signing key provided or sign-build=false. Disabling updater artifacts generation..."
+            node -e '
+              const fs = require("fs");
+              const p = "frontend/src-tauri/tauri.conf.json";
+              const conf = JSON.parse(fs.readFileSync(p, "utf8"));
+              conf.bundle.createUpdaterArtifacts = false;
+              fs.writeFileSync(p, JSON.stringify(conf, null, 4));
+            '
+          fi
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -304,7 +325,7 @@ jobs:
           fi
 
       - name: Upload artifacts
-        if: ${{ github.event.inputs.upload-artifacts == 'true' }}
+        if: ${{ github.event.inputs.upload-artifacts == 'true' || github.event.inputs.upload-artifacts == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: meetily-linux-${{ github.event.inputs.ubuntu-version || 'ubuntu-22.04' }}-x64-${{ steps.build-profile.outputs.profile }}-${{ steps.get-version.outputs.version }}
