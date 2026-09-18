@@ -14,7 +14,8 @@ import {
   ExternalLink,
   Activity,
   Volume2,
-  Mic
+  Mic,
+  Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -70,6 +71,7 @@ const CopilotPanelContent: React.FC<{
   } = copilot;
 
   const [copied, setCopied] = useState(false);
+  const [manualInput, setManualInput] = useState('');
   const availableScopes = ['backend', 'arquitetura', 'incidentes', 'java', 'banco', 'todos'];
 
   if (!isOpen) return null;
@@ -212,6 +214,38 @@ const CopilotPanelContent: React.FC<{
           <Zap size={13} />
           <span>Sugerir (Alt+Q)</span>
         </Button>
+      </div>
+
+      {/* Pergunta manual direta (ideal para entrevistas ou testes de áudio) */}
+      <div className="px-4 py-2 bg-white border-b border-gray-100">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (manualInput.trim()) {
+              triggerManual(manualInput.trim());
+              setManualInput('');
+            }
+          }}
+          className="flex items-center gap-1.5"
+        >
+          <input
+            type="text"
+            value={manualInput}
+            onChange={(e) => setManualInput(e.target.value)}
+            placeholder="Cole ou digite a pergunta da entrevista..."
+            className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 focus:outline-none focus:border-indigo-500 text-gray-800 placeholder-gray-400"
+            disabled={isGenerating}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2.5"
+            disabled={isGenerating || !manualInput.trim()}
+            title="Enviar pergunta para o Copiloto"
+          >
+            <Send size={12} />
+          </Button>
+        </form>
       </div>
 
       {/* Seletor de Escopos */}

@@ -71,10 +71,21 @@ if (typeof window !== 'undefined') {
             };
           case 'api_get_model_config':
             return {
-              selected_provider: 'lmstudio',
-              selected_model: 'local-model',
-              lm_studio_endpoint: 'http://127.0.0.1:1234',
-              ollama_endpoint: 'http://127.0.0.1:11434',
+              provider: 'custom-openai',
+              model: 'qwen2.5-coder-14b-instruct',
+              whisperModel: 'large-v3',
+              customOpenAIEndpoint: 'http://127.0.0.1:1234/v1',
+              customOpenAIModel: 'qwen2.5-coder-14b-instruct',
+              ollamaEndpoint: 'http://127.0.0.1:11434',
+            };
+          case 'api_get_custom_openai_config':
+            return {
+              endpoint: 'http://127.0.0.1:1234/v1',
+              apiKey: null,
+              model: 'qwen2.5-coder-14b-instruct',
+              maxTokens: 500,
+              temperature: 0.7,
+              topP: 0.9,
             };
           case 'get_audio_devices':
             return [

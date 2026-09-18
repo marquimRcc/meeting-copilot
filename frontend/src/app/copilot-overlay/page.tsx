@@ -17,7 +17,8 @@ import {
   RotateCcw,
   Activity,
   Volume2,
-  Mic
+  Mic,
+  Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -50,6 +51,7 @@ export default function CopilotOverlayPage() {
 
   const [isPinned, setIsPinned] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [manualInput, setManualInput] = useState('');
   const availableScopes = ['backend', 'arquitetura', 'incidentes', 'java', 'banco', 'todos'];
 
   // Tauri window handler (com fallback seguro para navegador comum)
@@ -234,6 +236,37 @@ export default function CopilotOverlayPage() {
           <Zap size={11} />
           <span>Alt+Q</span>
         </Button>
+      </div>
+
+      {/* Pergunta manual direta para entrevistas */}
+      <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (manualInput.trim()) {
+              triggerManual(manualInput.trim());
+              setManualInput('');
+            }
+          }}
+          className="flex items-center gap-1.5"
+        >
+          <input
+            type="text"
+            value={manualInput}
+            onChange={(e) => setManualInput(e.target.value)}
+            placeholder="Pergunta do recrutador..."
+            className="flex-1 text-[11px] px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            disabled={isGenerating}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className="h-6 text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2"
+            disabled={isGenerating || !manualInput.trim()}
+          >
+            <Send size={10} />
+          </Button>
+        </form>
       </div>
 
       {/* Corpo com Streaming e Evidências */}
