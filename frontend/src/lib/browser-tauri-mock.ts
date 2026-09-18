@@ -73,6 +73,45 @@ if (typeof window !== 'undefined') {
           case 'is_analytics_enabled':
           case 'is_analytics_session_active':
             return false;
+          case 'get_recording_state':
+            return {
+              is_recording: false,
+              meeting_id: null,
+              is_paused: false,
+              is_active: false,
+              recording_duration: null,
+              active_duration: null,
+            };
+          case 'is_recording':
+            return false;
+          case 'get_current_meeting_id':
+          case 'get_recording_meeting_name':
+          case 'get_meeting_folder_path':
+          case 'cleanup_checkpoints':
+            return null;
+          case 'get_transcript_history':
+            return [];
+          case 'parakeet_init':
+            return null;
+          case 'parakeet_has_available_models':
+            return true;
+          case 'get_ollama_models':
+            return [];
+          case 'init_analytics':
+          case 'disable_analytics':
+          case 'track_event':
+          case 'identify_user':
+          case 'start_analytics_session':
+          case 'end_analytics_session':
+          case 'track_daily_active_user':
+          case 'track_user_first_launch':
+          case 'track_meeting_started':
+          case 'track_recording_started':
+          case 'track_recording_stopped':
+          case 'track_meeting_deleted':
+          case 'track_settings_changed':
+          case 'track_feature_used':
+            return true;
           case 'get_recording_preferences':
             return { micDevice: 'none' };
           case 'set_recording_preferences':

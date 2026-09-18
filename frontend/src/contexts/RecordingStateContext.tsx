@@ -91,15 +91,18 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
   const syncWithBackend = async () => {
     try {
       const backendState = await recordingService.getRecordingState();
+      if (!backendState) {
+        return;
+      }
 
       setState(prev => ({
         ...prev,
-        isRecording: backendState.is_recording,
+        isRecording: Boolean(backendState.is_recording),
         meeting_id: backendState.meeting_id ?? null,
-        isPaused: backendState.is_paused,
-        isActive: backendState.is_active,
-        recordingDuration: backendState.recording_duration,
-        activeDuration: backendState.active_duration,
+        isPaused: Boolean(backendState.is_paused),
+        isActive: Boolean(backendState.is_active),
+        recordingDuration: backendState.recording_duration ?? null,
+        activeDuration: backendState.active_duration ?? null,
       }));
 
       console.log('[RecordingStateContext] Synced with backend:', backendState);
