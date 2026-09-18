@@ -32,7 +32,11 @@ export default function CopilotOverlayPage() {
     setIsAutoTrigger,
     triggerManual,
     cancelGeneration,
-    clearState
+    clearState,
+    dismissQuestion,
+    regenerateAnswer,
+    activeProvider,
+    activeModel
   } = useMeetingCopilot();
 
   const [isPinned, setIsPinned] = useState(true);
@@ -206,7 +210,16 @@ export default function CopilotOverlayPage() {
           <div className="p-2.5 bg-slate-800/60 border border-slate-700/60 rounded-lg space-y-1">
             <div className="flex items-center justify-between text-[10px] text-slate-400">
               <span className="font-semibold uppercase tracking-wider text-indigo-400">Pergunta</span>
-              <span className="capitalize">{currentQuestion.reason}</span>
+              <div className="flex items-center space-x-1">
+                <span className="capitalize">{currentQuestion.reason}</span>
+                <button
+                  onClick={dismissQuestion}
+                  className="text-slate-400 hover:text-red-400 p-0.5 rounded transition-colors"
+                  title="Dispensar esta pergunta"
+                >
+                  <X size={12} />
+                </button>
+              </div>
             </div>
             <p className="text-xs font-medium text-slate-100">
               "{currentQuestion.text}"
@@ -235,13 +248,23 @@ export default function CopilotOverlayPage() {
                     Parar
                   </button>
                 ) : (
-                  <button
-                    onClick={handleCopy}
-                    className="text-[10px] text-slate-300 hover:text-white px-1.5 py-0.5 rounded hover:bg-slate-700 flex items-center space-x-1"
-                  >
-                    {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                    <span>{copied ? 'Copiado' : 'Copiar'}</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={regenerateAnswer}
+                      className="text-[10px] text-slate-300 hover:text-indigo-300 px-1.5 py-0.5 rounded hover:bg-slate-700 flex items-center space-x-1"
+                      title="Regerar sugestão"
+                    >
+                      <RotateCcw size={10} />
+                      <span>Regerar</span>
+                    </button>
+                    <button
+                      onClick={handleCopy}
+                      className="text-[10px] text-slate-300 hover:text-white px-1.5 py-0.5 rounded hover:bg-slate-700 flex items-center space-x-1"
+                    >
+                      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                      <span>{copied ? 'Copiado' : 'Copiar'}</span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -285,7 +308,9 @@ export default function CopilotOverlayPage() {
 
       {/* Rodapé */}
       <footer className="h-7 px-3 bg-slate-800/80 border-t border-slate-700/60 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
-        <span>LM Studio (Porta 1234) / Ollama</span>
+        <span className="truncate max-w-[200px]" title={`Modelo: ${activeModel} (${activeProvider})`}>
+          {activeModel}
+        </span>
         <button
           onClick={clearState}
           className="hover:text-slate-200 flex items-center space-x-1 transition-colors"

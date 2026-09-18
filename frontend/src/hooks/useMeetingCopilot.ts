@@ -27,6 +27,10 @@ export interface UseMeetingCopilotReturn {
   triggerManual: (text?: string) => Promise<void>;
   cancelGeneration: () => void;
   clearState: () => void;
+  dismissQuestion: () => void;
+  regenerateAnswer: () => Promise<void>;
+  activeProvider: string;
+  activeModel: string;
 }
 
 export function useMeetingCopilot(): UseMeetingCopilotReturn {
@@ -303,6 +307,24 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     setIsGenerating(false);
   }, []);
 
+  // Dispensar pergunta atual
+  const dismissQuestion = useCallback(() => {
+    cancelGeneration();
+    setCurrentQuestion(null);
+    setEvidence([]);
+    setStreamingAnswer('');
+    setError(null);
+  }, [cancelGeneration]);
+
+  // Regerar resposta para a pergunta atual
+  const regenerateAnswer = useCallback(async () => {
+    if (!currentQuestion) {
+      await triggerManual();
+      return;
+    }
+    await executeCopilotSuggestion(currentQuestion.text, currentQuestion);
+  }, [currentQuestion, executeCopilotSuggestion, triggerManual]);
+
   // Limpar estado
   const clearState = useCallback(() => {
     cancelGeneration();
@@ -314,6 +336,12 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     bufferRef.current = new TranscriptBuffer(currentMeetingId || 'copilot-session');
     detectorRef.current.clear();
   }, [cancelGeneration, currentMeetingId]);
+
+  // Identificação do modelo ativo
+  const activeProvider = modelConfig?.provider || 'ollama';
+  const activeModel = activeProvider === 'custom-openai'
+    ? (modelConfig?.customOpenAIModel || 'qwen2.5-coder / LM Studio')
+    : (modelConfig?.model || 'llama3.2');
 
   // Registro de atalho global de teclado (Alt + Q)
   useEffect(() => {
@@ -341,6 +369,10 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     setIsAutoTrigger,
     triggerManual,
     cancelGeneration,
-    clearState
+    clearState,
+    dismissQuestion,
+    regenerateAnswer,
+    activeProvider,
+    activeModel
   };
 }

@@ -16,12 +16,31 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
-interface CopilotPanelProps {
+import type { UseMeetingCopilotReturn } from '@/hooks/useMeetingCopilot';
+
+export interface CopilotPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  copilot?: UseMeetingCopilotReturn;
 }
 
-export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose }) => {
+export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose, copilot }) => {
+  if (copilot) {
+    return <CopilotPanelContent isOpen={isOpen} onClose={onClose} copilot={copilot} />;
+  }
+  return <CopilotPanelWithInternalHook isOpen={isOpen} onClose={onClose} />;
+};
+
+const CopilotPanelWithInternalHook: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  const copilot = useMeetingCopilot();
+  return <CopilotPanelContent isOpen={isOpen} onClose={onClose} copilot={copilot} />;
+};
+
+const CopilotPanelContent: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  copilot: UseMeetingCopilotReturn;
+}> = ({ isOpen, onClose, copilot }) => {
   const {
     currentQuestion,
     evidence,
@@ -34,8 +53,12 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose }) =
     setIsAutoTrigger,
     triggerManual,
     cancelGeneration,
-    clearState
-  } = useMeetingCopilot();
+    clearState,
+    dismissQuestion,
+    regenerateAnswer,
+    activeProvider,
+    activeModel
+  } = copilot;
 
   const [copied, setCopied] = useState(false);
   const availableScopes = ['backend', 'arquitetura', 'incidentes', 'java', 'banco', 'todos'];
@@ -192,10 +215,19 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose }) =
 
         {/* Pergunta Atual */}
         {currentQuestion && (
-          <div className="p-3 bg-white border border-gray-200 rounded-xl shadow-xs space-y-1.5">
+          <div className="p-3 bg-white border border-indigo-100 rounded-xl shadow-xs space-y-1.5 transition-all">
             <div className="flex items-center justify-between text-[11px] text-gray-400">
               <span className="font-semibold uppercase tracking-wider text-indigo-600">Pergunta em Foco</span>
-              <span className="capitalize">{currentQuestion.reason}</span>
+              <div className="flex items-center space-x-1.5">
+                <span className="capitalize">{currentQuestion.reason}</span>
+                <button
+                  onClick={dismissQuestion}
+                  className="text-gray-400 hover:text-red-500 p-0.5 rounded transition-colors"
+                  title="Dispensar esta pergunta"
+                >
+                  <X size={13} />
+                </button>
+              </div>
             </div>
             <p className="text-sm font-medium text-gray-900 leading-snug">
               "{currentQuestion.text}"
@@ -205,7 +237,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose }) =
 
         {/* Sugestão da IA (Streaming) */}
         {(streamingAnswer || isGenerating) && (
-          <div className="p-3.5 bg-gradient-to-b from-indigo-50/70 to-white border border-indigo-200/80 rounded-xl shadow-sm space-y-2">
+          <div className="p-3.5 bg-gradient-to-b from-indigo-50/70 to-white border border-indigo-200/80 rounded-xl shadow-sm space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-1.5 text-xs font-semibold text-indigo-900">
                 <Sparkles size={14} className="text-indigo-600" />
@@ -226,15 +258,27 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose }) =
                     Parar
                   </Button>
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-[11px] text-gray-600 hover:text-gray-900 px-2 gap-1"
-                    onClick={handleCopy}
-                  >
-                    {copied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
-                    <span>{copied ? 'Copiado' : 'Copiar'}</span>
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[11px] text-gray-600 hover:text-indigo-600 px-1.5 gap-1"
+                      onClick={regenerateAnswer}
+                      title="Regerar sugestão para a pergunta em foco"
+                    >
+                      <RotateCcw size={11} />
+                      <span className="hidden sm:inline">Regerar</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[11px] text-gray-600 hover:text-gray-900 px-2 gap-1"
+                      onClick={handleCopy}
+                    >
+                      {copied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                      <span>{copied ? 'Copiado' : 'Copiar'}</span>
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -282,9 +326,12 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({ isOpen, onClose }) =
         )}
       </div>
 
-      {/* Rodapé com Limpar */}
+      {/* Rodapé com Indicador de Modelo e Limpar */}
       <div className="p-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between text-[11px] text-gray-500">
-        <span>Ollama ou OpenAI</span>
+        <div className="flex items-center space-x-1.5 truncate max-w-[210px]" title={`Modelo: ${activeModel} (${activeProvider})`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+          <span className="truncate font-medium text-gray-700">{activeModel}</span>
+        </div>
         <button
           onClick={clearState}
           className="hover:text-gray-800 flex items-center space-x-1 p-1 rounded hover:bg-gray-100"

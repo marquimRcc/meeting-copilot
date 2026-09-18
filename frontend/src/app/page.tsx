@@ -19,6 +19,7 @@ import { useTranscriptRecovery } from '@/hooks/useTranscriptRecovery';
 import { TranscriptRecovery } from '@/components/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
 import { CopilotPanel } from '@/components/Copilot';
+import { useMeetingCopilot } from '@/hooks/useMeetingCopilot';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
@@ -28,6 +29,7 @@ export default function Home() {
   const [barHeights, setBarHeights] = useState(['58%', '76%', '58%']);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const copilot = useMeetingCopilot();
 
   // Use contexts for state management
   const { meetingTitle } = useTranscripts();
@@ -226,11 +228,14 @@ export default function Home() {
           showModal={showModal}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
+          hasCopilotSuggestion={Boolean(copilot.currentQuestion || copilot.streamingAnswer)}
+          isCopilotGenerating={copilot.isGenerating}
         />
 
         <CopilotPanel
           isOpen={isCopilotOpen}
           onClose={() => setIsCopilotOpen(false)}
+          copilot={copilot}
         />
 
         {/* Recording controls - only show when permissions are granted or already recording and not showing status messages */}

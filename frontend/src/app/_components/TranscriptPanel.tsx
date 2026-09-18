@@ -25,6 +25,8 @@ interface TranscriptPanelProps {
   showModal: (name: ModalType, message?: string) => void;
   isCopilotOpen?: boolean;
   onToggleCopilot?: () => void;
+  hasCopilotSuggestion?: boolean;
+  isCopilotGenerating?: boolean;
 }
 
 export function TranscriptPanel({
@@ -32,7 +34,9 @@ export function TranscriptPanel({
   isStopping,
   showModal,
   isCopilotOpen = false,
-  onToggleCopilot
+  onToggleCopilot,
+  hasCopilotSuggestion = false,
+  isCopilotGenerating = false,
 }: TranscriptPanelProps) {
   // Contexts
   const { transcripts, transcriptContainerRef, copyTranscript } = useTranscripts();
@@ -69,10 +73,36 @@ export function TranscriptPanel({
                     size="sm"
                     onClick={onToggleCopilot}
                     title="Alternar Meeting Copilot (Alt+Q)"
-                    className={isCopilotOpen ? "text-indigo-600 bg-indigo-50 border-indigo-200 font-medium" : ""}
+                    className={`relative transition-colors ${
+                      isCopilotOpen
+                        ? "text-indigo-600 bg-indigo-50 border-indigo-200 font-medium"
+                        : hasCopilotSuggestion
+                          ? "border-indigo-400 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/60 font-medium shadow-xs"
+                          : ""
+                    }`}
                   >
-                    <Sparkles className="text-indigo-600 mr-1" size={14} />
+                    <Sparkles
+                      className={`mr-1 ${
+                        isCopilotGenerating ? "animate-spin text-amber-500" : "text-indigo-600"
+                      }`}
+                      size={14}
+                    />
                     <span>Copilot</span>
+                    {/* Indicador visual / pulso discreto de notificação quando houver pergunta ou sugestão com painel fechado */}
+                    {!isCopilotOpen && (hasCopilotSuggestion || isCopilotGenerating) && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span
+                          className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                            isCopilotGenerating ? "bg-amber-400" : "bg-indigo-400"
+                          }`}
+                        />
+                        <span
+                          className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                            isCopilotGenerating ? "bg-amber-500" : "bg-indigo-600"
+                          }`}
+                        />
+                      </span>
+                    )}
                   </Button>
                 )}
                 {transcripts?.length > 0 && (
