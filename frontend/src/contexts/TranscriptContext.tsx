@@ -478,6 +478,12 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
           const history = await transcriptService.getTranscriptHistory();
           console.log(`[Reload Sync] Retrieved ${history.length} transcript segments from backend`);
 
+          // Checagem de isolamento pós-await: se a sessão mudou ou a gravação foi encerrada, descarta
+          if (activeMeetingIdRef.current !== restoredMeetingId || !isRecordingActiveRef.current) {
+            console.warn('[Reload Sync] Session changed or recording stopped while fetching history. Dropping stale sync.');
+            return;
+          }
+
           // 4. Convert backend format to frontend Transcript format with restoredMeetingId
           const formattedTranscripts: Transcript[] = history.map((segment: any) => ({
             id: segment.id,
@@ -497,8 +503,31 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             meeting_id: restoredMeetingId,
           }));
 
-          setTranscripts(formattedTranscripts);
-          console.log('[Reload Sync] ✅ Transcript history synced successfully');
+          // Mescla segura: preserva falas que já chegaram ao vivo pelo listener durante o await da consulta
+          setTranscripts((prev) => {
+            if (activeMeetingIdRef.current !== restoredMeetingId) return prev;
+
+            const mergedMap = new Map<string | number, Transcript>();
+            for (const item of formattedTranscripts) {
+              const key = item.sequence_id !== undefined ? item.sequence_id : item.id;
+              mergedMap.set(key, item);
+            }
+
+            for (const live of prev) {
+              if (live.meeting_id && live.meeting_id !== restoredMeetingId) continue;
+              const key = live.sequence_id !== undefined ? live.sequence_id : live.id;
+              // Falas ao vivo chegam mais recentes ou com novas sequências
+              mergedMap.set(key, live);
+            }
+
+            return Array.from(mergedMap.values()).sort((a, b) => {
+              if (a.sequence_id !== undefined && b.sequence_id !== undefined) {
+                return a.sequence_id - b.sequence_id;
+              }
+              return (a.audio_start_time ?? 0) - (b.audio_start_time ?? 0);
+            });
+          });
+          console.log('[Reload Sync] ✅ Transcript history synced and merged with live transcripts successfully');
 
           // 5. Fetch meeting name from backend
           const meetingName = await recordingService.getRecordingMeetingName();

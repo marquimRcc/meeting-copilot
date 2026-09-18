@@ -44,7 +44,8 @@ export default function CopilotOverlayPage() {
     isCheckingHealth,
     checkConnection,
     isRemoteOnly,
-    toggleRemoteOnly
+    toggleRemoteOnly,
+    isRecording
   } = useMeetingCopilot();
 
   const [isPinned, setIsPinned] = useState(true);
@@ -175,15 +176,20 @@ export default function CopilotOverlayPage() {
 
           <button
             onClick={() => toggleRemoteOnly()}
+            disabled={isRecording}
             className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center space-x-1 ${
-              isRemoteOnly
-                ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-700/60 font-medium'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              isRecording
+                ? 'opacity-60 cursor-not-allowed bg-slate-800 text-slate-500 border border-slate-700/50'
+                : isRemoteOnly
+                  ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-700/60 font-medium'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
             title={
-              isRemoteOnly
-                ? 'Modo Somente Interlocutor ativo: Microfone desativado'
-                : 'Modo Padrão: Microfone e áudio do sistema'
+              isRecording
+                ? 'Alteração desativada durante a gravação. Altere antes de iniciar a reunião.'
+                : isRemoteOnly
+                  ? 'Modo Somente Interlocutor ativo: Microfone desativado'
+                  : 'Modo Padrão: Microfone e áudio do sistema'
             }
           >
             {isRemoteOnly ? (

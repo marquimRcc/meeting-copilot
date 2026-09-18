@@ -65,6 +65,7 @@ let mockBackendHistory: any[] = [];
 let failRecordingStart = false;
 let startRecordingCallCount = 0;
 let startRecordingDelayMs = 0;
+let mockGetHistoryDelayMs = 0;
 
 (globalThis.window as any).__TAURI_INTERNALS__ = {
   transformCallback: (fn: (event: any) => void) => {
@@ -99,6 +100,9 @@ let startRecordingDelayMs = 0;
       return mockBackendMeetingName;
     }
     if (cmd === 'get_transcript_history') {
+      if (mockGetHistoryDelayMs > 0) {
+        await new Promise(r => setTimeout(r, mockGetHistoryDelayMs));
+      }
       return mockBackendHistory;
     }
     if (cmd === 'api_get_transcript_config') {
@@ -198,6 +202,7 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     failRecordingStart = false;
     startRecordingCallCount = 0;
     startRecordingDelayMs = 0;
+    mockGetHistoryDelayMs = 0;
     activeContext = null;
     activeStartFn = null;
 
@@ -580,8 +585,96 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     }
 
     assert.ok(timeoutHappened, 'Timeout deve ter sido disparado');
+
+    // Aguarda a resolução tardia do backend (80ms + margem) para verificar que o watcher/evento encerra a gravação
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 120));
+    });
+
     // Reconciliação deve garantir que não há gravação fantasma deixada no backend
-    assert.strictEqual(mockBackendIsRecording, false, 'Backend não pode ficar gravando silenciosamente');
+    assert.strictEqual(mockBackendIsRecording, false, 'Backend não pode ficar gravando silenciosamente após conclusão tardia');
+  });
+
+  it('Cenário I — recuperação pós-reload sem corrida: mescla falas ao vivo recebidas durante consulta ao histórico e descarta se a sessão mudar', async () => {
+    // 1. Simula gravação ativa no reload com histórico que demora 50ms para retornar
+    mockBackendIsRecording = true;
+    mockBackendMeetingId = 'meeting-reload-merge-1';
+    mockBackendMeetingName = 'Reunião Merge';
+    mockBackendHistory = [
+      {
+        id: 'hist-1',
+        text: 'Fala do histórico 1',
+        display_time: '10:00:00',
+        sequence_id: 1,
+        audio_start_time: 0,
+        confidence: 0.95,
+        source: 'Microphone',
+      }
+    ];
+    mockGetHistoryDelayMs = 100;
+
+    // Monta a aplicação: syncFromBackend restaura a sessão e inicia getTranscriptHistory (delay 100ms)
+    await act(async () => {
+      renderer = create(renderApp());
+      await new Promise(r => setTimeout(r, 80));
+    });
+
+    // Enquanto getTranscriptHistory ainda está aguardando os 100ms, emite fala ao vivo
+    await act(async () => {
+      emitTauriEvent('transcript-update', {
+        meeting_id: 'meeting-reload-merge-1',
+        sequence_id: 2,
+        text: 'Fala ao vivo recebida durante sync',
+        is_partial: false,
+        source: 'System Audio',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Aguarda o término do delay do get_transcript_history (100ms) e a mesclagem
+      await new Promise(r => setTimeout(r, 180));
+    });
+
+    // Ambas as falas (histórico e ao vivo) devem estar presentes
+    assert.strictEqual(activeContext!.transcripts.length, 2, 'Histórico e fala ao vivo devem coexistir');
+    assert.strictEqual(activeContext!.transcripts[0].text, 'Fala do histórico 1');
+    assert.strictEqual(activeContext!.transcripts[1].text, 'Fala ao vivo recebida durante sync');
+
+    // 2. Agora testa descarte se a sessão mudar antes do histórico retornar
+    mockBackendIsRecording = true;
+    mockBackendMeetingId = 'meeting-reload-abandoned';
+    mockBackendMeetingName = 'Reunião Abandonada';
+    mockBackendHistory = [
+      {
+        id: 'hist-stale',
+        text: 'Fala antiga da reunião anterior',
+        display_time: '10:05:00',
+        sequence_id: 1,
+        audio_start_time: 0,
+        confidence: 0.95,
+        source: 'Microphone',
+      }
+    ];
+    mockGetHistoryDelayMs = 100;
+
+    await act(async () => {
+      if (renderer) {
+        renderer.unmount();
+      }
+      renderer = create(renderApp());
+      await new Promise(r => setTimeout(r, 80));
+    });
+
+    await act(async () => {
+      // Reunião é encerrada antes do get_transcript_history retornar
+      mockBackendIsRecording = false;
+      mockBackendMeetingId = null;
+      emitTauriEvent('recording-stopped', { folder_path: '/tmp/meeting-reload-abandoned' });
+
+      await new Promise(r => setTimeout(r, 160));
+    });
+
+    // O histórico obsoleto de meeting-reload-abandoned não deve ser injetado pois a reunião já encerrou
+    assert.strictEqual(activeContext!.transcripts.length, 0, 'Histórico não deve ser injetado após encerramento da reunião');
   });
 
   after(() => {

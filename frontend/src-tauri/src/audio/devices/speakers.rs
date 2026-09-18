@@ -37,30 +37,48 @@ pub fn default_output_device() -> Result<AudioDevice> {
 
     #[cfg(target_os = "linux")]
     {
-        // On Linux, system audio capture must use a PulseAudio/ALSA monitor input device.
-        if let Ok(pulse_host) = cpal::host_from_id(cpal::HostId::Alsa) {
-            if let Ok(inputs) = pulse_host.input_devices() {
+        // On Linux, system audio capture must use a PulseAudio/PipeWire/ALSA monitor input device.
+        let host = cpal::default_host();
+        let default_out_name = host.default_output_device().and_then(|d| d.name().ok());
+
+        // 1. Tentar casar exatamente o monitor associado à saída padrão ativa do sistema
+        if let Some(ref out_name) = default_out_name {
+            let clean_out = out_name.to_lowercase();
+            if let Ok(inputs) = host.input_devices() {
                 for device in inputs {
                     if let Ok(name) = device.name() {
-                        if name.contains("monitor") {
-                            info!("✅ Found Linux system audio monitor device: {}", name);
-                            return Ok(AudioDevice::new(name, DeviceType::Output));
+                        let name_lower = name.to_lowercase();
+                        if name_lower.contains("monitor") {
+                            let base_name = name_lower.replace(".monitor", "").replace("monitor of ", "");
+                            if name_lower.contains(&clean_out) || clean_out.contains(base_name.trim()) {
+                                info!("✅ Found matching Linux monitor for default output device '{}': {}", out_name, name);
+                                return Ok(AudioDevice::new(name, DeviceType::Output));
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Check default host inputs for a monitor device
-        let host = cpal::default_host();
+        // 2. Fallback: procurar monitor nos inputs da ALSA/Pulse, priorizando dispositivos ativos não-HDMI
         if let Ok(inputs) = host.input_devices() {
+            let mut fallback_hdmi = None;
             for device in inputs {
                 if let Ok(name) = device.name() {
-                    if name.contains("monitor") {
-                        info!("✅ Found Linux default host monitor device: {}", name);
-                        return Ok(AudioDevice::new(name, DeviceType::Output));
+                    let name_lower = name.to_lowercase();
+                    if name_lower.contains("monitor") {
+                        if !name_lower.contains("hdmi") {
+                            info!("✅ Found preferred non-HDMI Linux monitor device: {}", name);
+                            return Ok(AudioDevice::new(name, DeviceType::Output));
+                        } else if fallback_hdmi.is_none() {
+                            fallback_hdmi = Some(name);
+                        }
                     }
                 }
+            }
+            if let Some(name) = fallback_hdmi {
+                info!("⚠️ Found only HDMI monitor device as fallback: {}", name);
+                return Ok(AudioDevice::new(name, DeviceType::Output));
             }
         }
 

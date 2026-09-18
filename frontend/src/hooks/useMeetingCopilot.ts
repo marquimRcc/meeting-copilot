@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useConfig } from '@/contexts/ConfigContext';
+import { useRecordingState } from '@/contexts/RecordingStateContext';
 import {
   BM25Index,
   CopilotAssistantService,
@@ -37,11 +38,14 @@ export interface UseMeetingCopilotReturn {
   checkConnection: () => Promise<HealthCheckResult>;
   isRemoteOnly: boolean;
   toggleRemoteOnly: () => Promise<void>;
+  isRecording: boolean;
 }
 
 export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const { transcripts, currentMeetingId } = useTranscripts();
   const { modelConfig, providerApiKeys, selectedDevices, setSelectedDevices } = useConfig();
+  const recordingState = useRecordingState();
+  const isRecording = recordingState?.isRecording ?? false;
 
   const [currentQuestion, setCurrentQuestion] = useState<CopilotQuestion | null>(null);
   const [evidence, setEvidence] = useState<EvidenceMatch[]>([]);
@@ -63,6 +67,14 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   }, [selectedDevices?.micDevice]);
 
   const toggleRemoteOnly = useCallback(async () => {
+    // Bloquear alteração durante gravação em andamento (o hardware/stream nativo não é reconfigurado a quente)
+    if (isRecording) {
+      toast.warning('A alteração de microfone não pode ser feita com a reunião em gravação.', {
+        description: 'Pause ou finalize a gravação atual para alterar os dispositivos de áudio.'
+      });
+      return;
+    }
+
     const nextMic = isRemoteOnly ? (lastRealMicRef.current || null) : 'none';
     const nextDevices = {
       ...selectedDevices,
@@ -88,7 +100,7 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     } else {
       toast.info('Modo Padrão ativado (Microfone e áudio do sistema)');
     }
-  }, [isRemoteOnly, selectedDevices, setSelectedDevices]);
+  }, [isRecording, isRemoteOnly, selectedDevices, setSelectedDevices]);
 
   // Instâncias singleton de processamento
   const bufferRef = useRef<TranscriptBuffer>(new TranscriptBuffer(currentMeetingId || 'copilot-session'));
@@ -312,16 +324,16 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
         processedSegmentsRef.current.set(segId, t.text);
       }
 
-      // Precedência estrita de canal:
-      // A) Se microfone estiver explicitamente desativado ('none'), opera em loopback exclusivo ('remote-system')
-      // B) Origem confirmada 'Microphone' é 'microphone'
-      // C) Origem confirmada 'System Audio' é 'remote-system'
+      // Precedência estrita e inviolável de canal:
+      // A) Origem física 'Microphone' é SEMPRE 'microphone' (NUNCA sobrescrever por preferência, garantindo que fala do usuário não simule pergunta de interlocutor)
+      // B) Origem física 'System Audio' é SEMPRE 'remote-system'
+      // C) Se a origem de hardware for nula/indeterminada mas o microfone estava desligado ('none'), assume loopback exclusivo ('remote-system')
       let channel: CopilotSegment['channel'] = 'unknown';
-      if (isLoopbackOnly) {
-        channel = 'remote-system';
-      } else if (t.source === 'Microphone') {
+      if (t.source === 'Microphone') {
         channel = 'microphone';
       } else if (t.source === 'System Audio') {
+        channel = 'remote-system';
+      } else if (isLoopbackOnly) {
         channel = 'remote-system';
       }
 
@@ -462,6 +474,7 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
     isCheckingHealth,
     checkConnection,
     isRemoteOnly,
-    toggleRemoteOnly
+    toggleRemoteOnly,
+    isRecording
   };
 }

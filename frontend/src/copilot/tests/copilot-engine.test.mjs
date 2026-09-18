@@ -367,11 +367,11 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
 
   // Helper que reproduz a lógica determinística de resolução de canal do hook useMeetingCopilot
   function resolveCopilotChannel(source, isLoopbackOnly) {
-    if (isLoopbackOnly) {
-      return 'remote-system';
-    } else if (source === 'Microphone') {
+    if (source === 'Microphone') {
       return 'microphone';
     } else if (source === 'System Audio') {
+      return 'remote-system';
+    } else if (isLoopbackOnly) {
       return 'remote-system';
     }
     return 'unknown';
@@ -384,10 +384,10 @@ describe('Parte 4: Separação de Locutores e Canais de Áudio (Speaker Diarizat
     // Quando vem do stream do microfone local (o próprio usuário falando)
     assert.equal(resolveCopilotChannel('Microphone', false), 'microphone');
 
-    // Precedência estrita: se microfone desativado ('none'), opera exclusivamente em loopback
-    assert.equal(resolveCopilotChannel('Microphone', true), 'remote-system');
+    // Precedência estrita: origem física 'Microphone' JAMAIS deve virar 'remote-system', mesmo se preferência for loopback
+    assert.equal(resolveCopilotChannel('Microphone', true), 'microphone');
 
-    // Quando o microfone foi explicitamente desativado no Meetily ('none')
+    // Quando a origem física não for informada mas o microfone foi explicitamente desativado ('none')
     assert.equal(resolveCopilotChannel(undefined, true), 'remote-system');
 
     // Quando o canal for indeterminado e ambos os dispositivos estiverem ativos

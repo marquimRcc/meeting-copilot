@@ -38,6 +38,7 @@ const START_TIMEOUT_MS = 120000;
 
 let activeStartOperationId = 0;
 let isStartInFlight = false;
+const abandonedStartOperationIds = new Set<number>();
 
 export function getActiveStartOperationId(): number {
   return activeStartOperationId;
@@ -45,6 +46,10 @@ export function getActiveStartOperationId(): number {
 
 export function isStartOperationInFlight(): boolean {
   return isStartInFlight;
+}
+
+export function isStartOperationAbandoned(opId: number): boolean {
+  return abandonedStartOperationIds.has(opId);
 }
 
 /**
@@ -60,9 +65,32 @@ export async function executeWithStartTimeout<T>(
 
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  // Track the actual underlying operation
+  const opPromise = operation(operationId);
+
+  // Background watcher for late resolution after timeout
+  opPromise
+    .then(async () => {
+      if (abandonedStartOperationIds.has(operationId)) {
+        console.warn(`[RecordingService] Late start completion detected for abandoned operation #${operationId}; issuing stop_recording`);
+        abandonedStartOperationIds.delete(operationId);
+        try {
+          await invoke('stop_recording', { args: { save_path: '' } });
+          console.warn(`[RecordingService] Stopped late ghost recording from operation #${operationId}`);
+        } catch (e) {
+          console.error(`[RecordingService] Failed to stop late ghost recording for #${operationId}:`, e);
+        }
+      }
+    })
+    .catch(() => {
+      abandonedStartOperationIds.delete(operationId);
+    });
+
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(async () => {
       console.warn(`[RecordingService] Start operation #${operationId} timed out after ${timeoutMs}ms`);
+      abandonedStartOperationIds.add(operationId);
+
       // Reconcile with backend: ensure no invisible background recording remains running
       try {
         const state = await invoke<RecordingState>('get_recording_state');
@@ -75,14 +103,16 @@ export async function executeWithStartTimeout<T>(
       } catch (err) {
         console.warn('[RecordingService] Failed to inspect backend state after timeout:', err);
       } finally {
-        isStartInFlight = false;
+        if (activeStartOperationId === operationId) {
+          isStartInFlight = false;
+        }
       }
       reject(new Error(`Recording start timed out after ${Math.round(timeoutMs / 1000)}s`));
     }, timeoutMs);
   });
 
   try {
-    const result = await Promise.race([operation(operationId), timeoutPromise]);
+    const result = await Promise.race([opPromise, timeoutPromise]);
     if (timer) clearTimeout(timer);
     return result;
   } catch (err) {
@@ -201,7 +231,19 @@ export class RecordingService {
    * @returns Promise that resolves to unlisten function
    */
   async onRecordingStarted(callback: (payload?: RecordingStartedPayload) => void): Promise<UnlistenFn> {
-    return listen<RecordingStartedPayload>('recording-started', (event) => {
+    return listen<RecordingStartedPayload>('recording-started', async (event) => {
+      // Se houver operações de start abandonadas (ex: timeout expirou antes do evento chegar),
+      // cancela e encerra a gravação imediatamente para evitar captura fantasma tardia
+      if (abandonedStartOperationIds.size > 0) {
+        console.warn('[RecordingService] recording-started recebido para operação abandonada por timeout; forçando stop');
+        abandonedStartOperationIds.clear();
+        try {
+          await invoke('stop_recording', { args: { save_path: '' } });
+          return;
+        } catch (e) {
+          console.error('[RecordingService] Falha ao parar gravação tardia:', e);
+        }
+      }
       callback(event.payload);
     });
   }

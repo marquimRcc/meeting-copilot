@@ -65,7 +65,8 @@ const CopilotPanelContent: React.FC<{
     isCheckingHealth,
     checkConnection,
     isRemoteOnly,
-    toggleRemoteOnly
+    toggleRemoteOnly,
+    isRecording
   } = copilot;
 
   const [copied, setCopied] = useState(false);
@@ -171,15 +172,20 @@ const CopilotPanelContent: React.FC<{
 
           <button
             onClick={() => toggleRemoteOnly()}
+            disabled={isRecording}
             className={`px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center space-x-1 ${
-              isRemoteOnly
-                ? 'bg-indigo-100 text-indigo-800 border border-indigo-300 font-semibold'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              isRecording
+                ? 'opacity-60 cursor-not-allowed bg-gray-100 text-gray-400 border border-gray-200'
+                : isRemoteOnly
+                  ? 'bg-indigo-100 text-indigo-800 border border-indigo-300 font-semibold'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
             title={
-              isRemoteOnly
-                ? 'Modo Somente Interlocutor ativo: Microfone desativado, captura apenas a saída da chamada'
-                : 'Modo Padrão: Grava microfone local e áudio da chamada'
+              isRecording
+                ? 'Alteração desativada durante a gravação. Defina o microfone antes de iniciar a reunião.'
+                : isRemoteOnly
+                  ? 'Modo Somente Interlocutor ativo: Microfone desativado, captura apenas a saída da chamada'
+                  : 'Modo Padrão: Grava microfone local e áudio da chamada'
             }
           >
             {isRemoteOnly ? (
