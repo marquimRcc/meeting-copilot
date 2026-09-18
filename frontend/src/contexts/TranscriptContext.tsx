@@ -20,6 +20,7 @@ export interface TranscriptContextType {
   clearTranscripts: () => void;
   clearTranscriptList: () => void;
   clearActiveSession: () => void;
+  restoreTranscripts: (backup: Transcript[]) => void;
   currentMeetingId: string | null;
   markMeetingAsSaved: () => Promise<void>;
 }
@@ -611,16 +612,25 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
 
   // Clear transcripts (used when starting new recording or explicitly clearing session)
   const clearTranscripts = useCallback(() => {
+    if (isRecordingActiveRef.current) {
+      console.warn('⚠️ clearTranscripts called while recording active - preserved active transcripts and session ID:', activeMeetingIdRef.current);
+      return;
+    }
     setTranscripts([]);
-    if (!isRecordingActiveRef.current) {
-      activeMeetingIdRef.current = null;
-      setCurrentMeetingId(null);
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('indexeddb_current_meeting_id');
-      }
-      console.log('🧹 Transcripts and active meeting session cleared');
-    } else {
-      console.warn('⚠️ clearTranscripts called while recording active - preserved active session ID:', activeMeetingIdRef.current);
+    activeMeetingIdRef.current = null;
+    setCurrentMeetingId(null);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('indexeddb_current_meeting_id');
+    }
+    console.log('🧹 Transcripts and active meeting session cleared');
+  }, []);
+
+  // Restore transcripts (used when duplicate start fails because recording was already active)
+  const restoreTranscripts = useCallback((backup: Transcript[]) => {
+    if (backup && backup.length > 0) {
+      setTranscripts(backup);
+      transcriptsRef.current = backup;
+      console.log(`🔄 Transcripts restored from backup (${backup.length} segments)`);
     }
   }, []);
 
@@ -662,6 +672,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     clearTranscripts,
     clearTranscriptList,
     clearActiveSession,
+    restoreTranscripts,
     currentMeetingId,
     markMeetingAsSaved,
   };

@@ -93,6 +93,17 @@ class IndexedDBService {
     return this.initPromise;
   }
 
+  /**
+   * Close active database connection
+   */
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+      this.initPromise = null;
+    }
+  }
+
   // Meeting operations
 
   /**

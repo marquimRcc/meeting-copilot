@@ -92,8 +92,12 @@ impl Drop for StoppingGuard {
 /// Shared start-path finalize. Both start commands MUST call this so a new
 /// start path can't silently ship with a per-session flag left unreset (e.g.
 /// the mic-recovery budget already exhausted).
-fn finalize_recording_start() {
-    info!("🔍 Setting IS_RECORDING to true and resetting SPEECH_DETECTED_EMITTED");
+fn finalize_recording_start(meeting_id: &str) {
+    info!("🔍 Setting CURRENT_MEETING_ID, IS_RECORDING to true and resetting SPEECH_DETECTED_EMITTED");
+    {
+        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
+        *mid = Some(meeting_id.to_string());
+    }
     IS_RECORDING.store(true, Ordering::SeqCst);
     MIC_FALLBACK_FAILED_ATTEMPTS.store(0, Ordering::SeqCst); // fresh mic-recovery budget per session
     reset_speech_detected_flag(); // reset speech-detected emit latch for the new session
@@ -433,8 +437,8 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     }
 
     // Flip recording live + reset per-session flags (speech-detected latch,
-    // mic-recovery budget). Shared with the other start path — see helper.
-    finalize_recording_start();
+    // mic-recovery budget). Sets CURRENT_MEETING_ID atomically before IS_RECORDING.
+    finalize_recording_start(&meeting_id);
     drop(engine_lifecycle_guard);
 
     // CRITICAL: Listen for transcript-update events and save to recording manager
@@ -478,11 +482,6 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         info!("✅ Transcript-update event listener registered for history persistence");
     }
 
-    {
-        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
-        *mid = Some(meeting_id.clone());
-    }
-
     // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started successfully with parallel processing",
@@ -491,6 +490,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         "meeting_id": meeting_id,
         "meeting_name": effective_meeting_name,
     })).map_err(|e| {
+        IS_RECORDING.store(false, Ordering::SeqCst);
         let mut mid = CURRENT_MEETING_ID.lock().unwrap();
         *mid = None;
         e.to_string()
@@ -640,8 +640,8 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     }
 
     // Flip recording live + reset per-session flags (speech-detected latch,
-    // mic-recovery budget). Shared with the other start path — see helper.
-    finalize_recording_start();
+    // mic-recovery budget). Sets CURRENT_MEETING_ID atomically before IS_RECORDING.
+    finalize_recording_start(&meeting_id);
     drop(engine_lifecycle_guard);
 
     // CRITICAL: Listen for transcript-update events and save to recording manager
@@ -685,11 +685,6 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         info!("✅ Transcript-update event listener registered for history persistence");
     }
 
-    {
-        let mut mid = CURRENT_MEETING_ID.lock().unwrap();
-        *mid = Some(meeting_id.clone());
-    }
-
     // Emit success event BEFORE starting transcription task so frontend adopts session ID synchronously first
     app.emit("recording-started", serde_json::json!({
         "message": "Recording started with custom devices and parallel processing",
@@ -701,6 +696,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         "meeting_id": meeting_id,
         "meeting_name": effective_meeting_name,
     })).map_err(|e| {
+        IS_RECORDING.store(false, Ordering::SeqCst);
         let mut mid = CURRENT_MEETING_ID.lock().unwrap();
         *mid = None;
         e.to_string()

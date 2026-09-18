@@ -104,6 +104,9 @@ let failRecordingStart = false;
       if (failRecordingStart) {
         throw new Error('Device failed to initialize');
       }
+      if (mockBackendIsRecording) {
+        throw new Error('Recording already in progress');
+      }
       mockBackendIsRecording = true;
       mockBackendMeetingId = args?.meetingName ? `meeting-${Date.now()}` : 'meeting-default';
       mockBackendMeetingName = args?.meetingName || 'Meeting';
@@ -132,7 +135,7 @@ let failRecordingStart = false;
 
 // Now import React contexts and services
 import { TranscriptProvider, useTranscripts, type TranscriptContextType } from '../../src/contexts/TranscriptContext';
-import { RecordingStateProvider } from '../../src/contexts/RecordingStateContext';
+import { RecordingStateProvider, useRecordingState } from '../../src/contexts/RecordingStateContext';
 import { SidebarContext } from '../../src/components/Sidebar/SidebarProvider';
 import { ConfigContext } from '../../src/contexts/ConfigContext';
 import { useRecordingStart } from '../../src/hooks/useRecordingStart';
@@ -144,7 +147,13 @@ let renderer: ReactTestRenderer | undefined;
 
 function TestHarness() {
   activeContext = useTranscripts();
+  const recordingState = useRecordingState();
   const [isRecording, setIsRecording] = useState(false);
+
+  React.useEffect(() => {
+    setIsRecording(recordingState.isRecording);
+  }, [recordingState.isRecording]);
+
   const { handleRecordingStart } = useRecordingStart(isRecording, setIsRecording);
   activeStartFn = handleRecordingStart;
   return null;
@@ -176,6 +185,7 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     activeStartFn = null;
 
     // Reset IndexedDB
+    indexedDBService.close();
     try {
       indexedDB.deleteDatabase('MeetilyRecoveryDB');
     } catch {}
@@ -249,6 +259,8 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     assert.ok(meetingA);
 
     await act(async () => {
+      mockBackendIsRecording = false;
+      mockBackendMeetingId = null;
       emitTauriEvent('recording-stopped', { folder_path: `/tmp/${meetingA}` });
       await new Promise(r => setTimeout(r, 30));
     });
@@ -451,7 +463,47 @@ describe('Sincronização de Sessão e Testes Integrados', () => {
     assert.strictEqual(activeContext!.transcripts.length, 0);
   });
 
+  it('Cenário F — início duplicado: não apaga transcrições da reunião ativa e mantém a sessão', async () => {
+    await act(async () => {
+      renderer = create(renderApp());
+    });
+
+    // 1. Início normal da reunião
+    await act(async () => {
+      await activeStartFn!();
+    });
+
+    const activeId = activeContext!.currentMeetingId;
+    assert.ok(activeId, 'currentMeetingId deve estar ativo');
+
+    // 2. Recebe transcrições durante a reunião
+    await act(async () => {
+      emitTauriEvent('transcript-update', {
+        meeting_id: activeId,
+        sequence_id: 1,
+        text: 'Fala importante da reunião ativa',
+        is_partial: false,
+        source: 'Microphone',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await new Promise(r => setTimeout(r, 40));
+    assert.strictEqual(activeContext!.transcripts.length, 1, 'Deve ter 1 transcrição na reunião ativa');
+    assert.strictEqual(activeContext!.transcripts[0].text, 'Fala importante da reunião ativa');
+
+    // 3. Dispara uma segunda tentativa de início enquanto a gravação já está ativa
+    await act(async () => {
+      await activeStartFn!();
+    });
+
+    // 4. Garante que as transcrições e o ID da reunião ativa não foram apagados
+    assert.strictEqual(activeContext!.currentMeetingId, activeId, 'currentMeetingId da reunião ativa deve ser preservado');
+    assert.strictEqual(activeContext!.transcripts.length, 1, 'Transcrições não devem ser apagadas por início duplicado');
+    assert.strictEqual(activeContext!.transcripts[0].text, 'Fala importante da reunião ativa', 'Texto deve permanecer intacto');
+  });
+
   after(() => {
-    setTimeout(() => process.exit(0), 100);
+    indexedDBService.close();
   });
 });
