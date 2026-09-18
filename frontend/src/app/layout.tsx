@@ -1,5 +1,6 @@
 'use client'
 
+import '@/lib/browser-tauri-mock'
 import './globals.css'
 import { Source_Sans_3 } from 'next/font/google'
 import Sidebar from '@/components/Sidebar'
