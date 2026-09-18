@@ -77,12 +77,11 @@ if (typeof window !== 'undefined') {
               ollama_endpoint: 'http://127.0.0.1:11434',
             };
           case 'get_audio_devices':
-            return {
-              devices: [
-                { id: 'default', name: 'Dispositivo Padrão' },
-                { id: 'none', name: 'Nenhum Microfone (Apenas Interlocutor)' },
-              ],
-            };
+            return [
+              { name: 'Microfone Padrão do Sistema', device_type: 'Input' },
+              { name: 'Nenhum Microfone (Apenas Interlocutor)', device_type: 'Input' },
+              { name: 'Alto-falantes / Fone de Ouvido', device_type: 'Output' },
+            ];
           case 'builtin_ai_list_models':
             return [];
           case 'is_analytics_enabled':
@@ -310,7 +309,16 @@ if (typeof window !== 'undefined') {
             return true;
           }
           case 'get_recording_preferences':
-            return { micDevice: 'none' };
+            return {
+              save_folder: '/home/marcos/Recordings',
+              auto_save: true,
+              file_format: 'mp4',
+              preferred_mic_device: 'Microfone Padrão do Sistema',
+              preferred_system_device: 'Alto-falantes / Fone de Ouvido',
+              micDevice: 'none',
+            };
+          case 'get_default_recordings_folder_path':
+            return '/home/marcos/Recordings';
           case 'set_recording_preferences':
           case 'set_language_preference':
           case 'set_notification_settings':

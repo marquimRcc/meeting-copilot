@@ -46,20 +46,27 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [showLevels, setShowLevels] = useState(false);
 
-  // Filter devices by type
-  const inputDevices = devices.filter(device => device.device_type === 'Input');
-  const outputDevices = devices.filter(device => device.device_type === 'Output');
+  // Filter devices by type (defensive against non-array values)
+  const safeDevices = Array.isArray(devices) ? devices : [];
+  const inputDevices = safeDevices.filter(device => device && device.device_type === 'Input');
+  const outputDevices = safeDevices.filter(device => device && device.device_type === 'Output');
 
   // Fetch available audio devices
   const fetchDevices = async () => {
     try {
       setError(null);
-      const result = await invoke<AudioDevice[]>('get_audio_devices');
-      setDevices(result);
-      console.log('Fetched audio devices:', result);
+      const result = await invoke<any>('get_audio_devices');
+      const list = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.devices)
+        ? result.devices
+        : [];
+      setDevices(list);
+      console.log('Fetched audio devices:', list);
     } catch (err) {
       console.error('Failed to fetch audio devices:', err);
-      setError('Failed to load audio devices. Please check your system audio settings.');
+      setError('Falha ao carregar dispositivos de áudio. Verifique as configurações de som do sistema.');
+      setDevices([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
