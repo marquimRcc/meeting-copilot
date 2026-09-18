@@ -34,6 +34,15 @@ if (typeof window !== 'undefined') {
     mockWindows('main', 'copilot-overlay');
     mockConvertFileSrc('linux');
 
+    // Estado simulado de gravação para testes na interface web
+    let isMockRecording = false;
+    let mockMeetingId: string | null = null;
+    let mockMeetingName = '';
+    let mockStartTime = 0;
+    let mockTranscriptInterval: any = null;
+    let mockTranscripts: any[] = [];
+    let mockSeq = 0;
+
     // 3. Mock do IPC
     mockIPC(
       async (cmd, args) => {
@@ -47,6 +56,12 @@ if (typeof window !== 'undefined') {
             return '0.4.1';
           case 'plugin:app|name':
             return 'meetily';
+          case 'whisper_init':
+            return null;
+          case 'whisper_has_available_models':
+            return true;
+          case 'whisper_get_available_models':
+            return [{ name: 'small', status: 'Available' }];
           case 'api_get_transcript_config':
             return {
               model: 'small',
@@ -75,22 +90,104 @@ if (typeof window !== 'undefined') {
             return false;
           case 'get_recording_state':
             return {
-              is_recording: false,
-              meeting_id: null,
+              is_recording: isMockRecording,
+              meeting_id: mockMeetingId,
               is_paused: false,
-              is_active: false,
-              recording_duration: null,
-              active_duration: null,
+              is_active: isMockRecording,
+              recording_duration: isMockRecording ? Math.floor((Date.now() - mockStartTime) / 1000) : null,
+              active_duration: isMockRecording ? Math.floor((Date.now() - mockStartTime) / 1000) : null,
             };
           case 'is_recording':
-            return false;
+            return isMockRecording;
           case 'get_current_meeting_id':
+            return mockMeetingId;
           case 'get_recording_meeting_name':
+            return mockMeetingName || 'Reunião 18/09/2026';
           case 'get_meeting_folder_path':
+            return mockMeetingId ? `/tmp/${mockMeetingId}` : null;
           case 'cleanup_checkpoints':
             return null;
           case 'get_transcript_history':
-            return [];
+            return mockTranscripts;
+          case 'get_transcription_status':
+            return {
+              chunks_in_queue: 0,
+              is_processing: isMockRecording,
+              last_activity_ms: Date.now(),
+            };
+          case 'start_recording':
+          case 'start_recording_with_devices_and_meeting': {
+            isMockRecording = true;
+            mockMeetingId = `meeting-${Date.now()}`;
+            mockMeetingName = (args as any)?.meetingName || `Reunião ${new Date().toLocaleDateString('pt-BR')}`;
+            mockStartTime = Date.now();
+            mockSeq = 0;
+            mockTranscripts = [];
+
+            setTimeout(async () => {
+              try {
+                const { emit } = await import('@tauri-apps/api/event');
+                await emit('recording-started', {
+                  meeting_id: mockMeetingId,
+                  meeting_name: mockMeetingName,
+                });
+
+                // Simulação de transcrição progressiva ao vivo para teste real do Copilot
+                const sampleTranscripts = [
+                  { speaker: 'Interlocutor', text: 'Boa tarde, pessoal! Vamos iniciar o alinhamento da sprint.' },
+                  { speaker: 'Você', text: 'Perfeito, estamos com foco na integração e nos testes do backend.' },
+                  { speaker: 'Interlocutor', text: 'Como ficou decidida a arquitetura para tratamento de concorrência no serviço?' },
+                  { speaker: 'Interlocutor', text: 'Qual é o plano de contingência caso o banco de dados apresente alta latência?' },
+                ];
+
+                let sampleIdx = 0;
+                if (mockTranscriptInterval) clearInterval(mockTranscriptInterval);
+                mockTranscriptInterval = setInterval(async () => {
+                  if (!isMockRecording || sampleIdx >= sampleTranscripts.length) {
+                    return;
+                  }
+                  mockSeq++;
+                  const sample = sampleTranscripts[sampleIdx++];
+                  const update = {
+                    meeting_id: mockMeetingId,
+                    sequence_id: mockSeq,
+                    speaker: sample.speaker,
+                    channel: sample.speaker === 'Você' ? 'mic' : 'remote-system',
+                    text: sample.text,
+                    timestamp: new Date().toISOString(),
+                    is_partial: false,
+                  };
+                  mockTranscripts.push(update);
+                  await emit('transcript-update', update);
+                }, 3000);
+              } catch (e) {
+                console.warn('[MockIPC] Falha ao emitir recording-started:', e);
+              }
+            }, 100);
+
+            return true;
+          }
+          case 'stop_recording': {
+            isMockRecording = false;
+            if (mockTranscriptInterval) {
+              clearInterval(mockTranscriptInterval);
+              mockTranscriptInterval = null;
+            }
+            setTimeout(async () => {
+              try {
+                const { emit } = await import('@tauri-apps/api/event');
+                await emit('recording-stopped', {
+                  folder_path: `/tmp/${mockMeetingId}`,
+                });
+              } catch (e) {}
+            }, 100);
+            return {
+              folder_path: `/tmp/${mockMeetingId}`,
+            };
+          }
+          case 'pause_recording':
+          case 'resume_recording':
+            return true;
           case 'get_onboarding_status': {
             if (typeof localStorage !== 'undefined') {
               const saved = localStorage.getItem('mock_onboarding_status');
