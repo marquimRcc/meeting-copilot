@@ -2,273 +2,169 @@
     <h1>
         <img src="docs/Meetily-6.png" style="border-radius: 10px;" />
         <br>
-        Privacy-First AI Meeting Assistant
+        Meeting Copilot
     </h1>
-    <a href="https://trendshift.io/repositories/21958" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21958" alt="Zackriya-Solutions%2Fmeetily | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+    <p><b>Privacy-First AI Meeting Assistant & Real-Time Copilot</b></p>
     <br>
-    <br>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases/"><img src="https://img.shields.io/badge/Pre_Release-Link-brightgreen" alt="Pre-Release"></a>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/zackriya-solutions/meeting-minutes?style=flat">
-</a>
- <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"> <img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/zackriya-solutions/meeting-minutes/total?style=plastic"> </a>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img src="https://img.shields.io/badge/Supported_OS-macOS,_Windows-white" alt="Supported OS"></a>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/zackriya-solutions/meeting-minutes?include_prereleases&color=yellow">
-</a>
-    <br>
-    <h3>
-    <br>
-    Open Source • Privacy-First • Enterprise-Ready
-    </h3>
+    <a href="https://github.com/marquimRcc/meeting-copilot/releases"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
+    <a href="https://github.com/marquimRcc/meeting-copilot"><img src="https://img.shields.io/badge/Supported_OS-macOS,_Windows,_Linux-white" alt="Supported OS"></a>
+    <a href="https://github.com/marquimRcc/meeting-copilot/actions/workflows/copilot-core.yml"><img src="https://github.com/marquimRcc/meeting-copilot/actions/workflows/copilot-core.yml/badge.svg" alt="CI Status"></a>
+    <br><br>
+    <h3>Open Source • Local-First • Privacy-First</h3>
     <p align="center">
-    Get latest <a href="https://www.zackriya.com/meetily-subscribe/"><b>Product updates</b></a> <br><br>
-    <a href="https://meetily.ai"><b>Website</b></a> •
-    <a href="https://www.linkedin.com/company/106363062/"><b>LinkedIn</b></a> •
-    <a href="https://discord.gg/crRymMQBFH"><b>Meetily Discord</b></a> •
-    <a href="https://discord.com/invite/vCFJvN4BwJ"><b>Privacy-First AI</b></a> •
-    <a href="https://www.reddit.com/r/meetily/"><b>Reddit</b></a>
-</p>
+        Um assistente e copiloto inteligente para reuniões que grava, transcreve, detecta perguntas e gera resumos e sugestões em tempo real diretamente no seu computador, preservando total privacidade e soberania de dados.
+    </p>
+
     <p align="center">
-
-A privacy-first AI meeting assistant that captures, transcribes, and summarizes meetings entirely on your infrastructure. Built by expert AI engineers passionate about data sovereignty and open source solutions. Perfect for enterprises that need advanced meeting intelligence without compromising on privacy, compliance, or control.
-
-</p>
-
-<p align="center">
-    <img src="docs/meetily_demo.gif" width="650" alt="Meetily Demo" />
-    <br>
-    <a href="https://youtu.be/6FnhSC_eSz8">View full Demo Video</a>
-</p>
-
+        <img src="docs/meetily_demo.gif" width="650" alt="Meeting Copilot Demo" />
+    </p>
 </div>
 
 ---
 
-> **Meetily PRO Upgrade Offer** - Meetily PRO is available for users who need enhanced accuracy, advanced exports, custom summary workflows, and team-ready features. Use coupon code **LAUNCH20** for **20% off** until the next Meetily Community Edition release. Speaker diarization is also planned for PRO in mid-June. [Explore Meetily PRO →](https://meetily.ai/pro/)
+<details>
+<summary><b>Sumário / Table of Contents</b></summary>
+
+- [Visão Geral / Overview](#visão-geral--overview)
+- [Principais Funcionalidades](#principais-funcionalidades)
+- [Copilot Engine Integrado](#copilot-engine-integrado)
+- [Instalação e Execução](#instalação-e-execução)
+  - [Pré-requisitos](#pré-requisitos)
+  - [Compilação a partir do Código-Fonte](#compilação-a-partir-do-código-fonte)
+- [Arquitetura do Sistema](#arquitetura-do-sistema)
+- [Testes e Validação Contínua](#testes-e-validação-contínua)
+- [Licença](#licença)
+- [Agradecimentos](#agradecimentos)
+
+</details>
 
 ---
 
-<details>
-<summary>Table of Contents</summary>
+## Visão Geral / Overview
 
-- [Introduction](#introduction)
-- [Why Meetily?](#why-meetily)
-- [Features](#features)
-- [Installation](#installation)
-- [Key Features in Action](#key-features-in-action)
-- [System Architecture](#system-architecture)
-- [For Developers](#for-developers)
-- [Meetily PRO](#meetily-pro)
-- [Contributing](#contributing)
-- [License](#license)
+O **Meeting Copilot** é uma aplicação desktop nativa e de código aberto desenvolvida com **Tauri (Rust)** e **Next.js (TypeScript/React)**. Seu propósito é fornecer transcrição contínua em tempo real, copiloto conversacional com recuperação de contexto e resumos automatizados de reuniões corporativas sem depender obrigatoriamente de nuvem.
 
-</details>
+### Princípios do Projeto:
+- **Privacidade e Soberania Total:** Modelos de transcrição (Whisper/Parakeet), gravações de áudio, transcrições e banco de dados rodam e persistem localmente na sua máquina (SQLite e IndexedDB).
+- **Sem Lock-in Comercial:** 100% livre e de código aberto. Sem assinaturas pagas, tiers restritos, telemetrias intrusivas ou dependências de servidores proprietários.
+- **Suporte a LLMs Locais e Externas:** Integração nativa com **Ollama** e **LM Studio** para execução offline com modelos open-source (Llama 3, Mistral, Qwen, DeepSeek), além de compatibilidade com endpoints OpenAI, Claude, Groq e OpenRouter.
 
-## Introduction
+---
 
-Meetily is a privacy-first AI meeting assistant that runs entirely on your local machine. It captures your meetings, transcribes them in real-time, and generates summaries, all without sending any data to the cloud. This makes it the perfect solution for professionals and enterprises who need to maintain complete control over their sensitive information.
+## Principais Funcionalidades
 
-## Why Meetily?
+- 🎙️ **Captura de Áudio Multicanal:** Gravação simultânea de microfone e áudio do sistema (interlocutor/reunião) com controle de canais e suporte a monitores no Windows e Linux (PulseAudio/PipeWire/ALSA).
+- ⚡ **Transcrição em Tempo Real:** Transcrição contínua acelerada por GPU (Vulkan/Metal/CUDA) usando Whisper ou Parakeet.
+- 🔄 **Ciclo de Vida Transacional e Resiliente:** Inicialização e parada transacionais com rollback automático no backend Rust, sincronização de sessão pós-reload (F5) e proteção contra inícios simultâneos concorrentes.
+- 📝 **Editor de Notas e Resumos com IA:** Geração de resumos de reuniões estruturados, planos de ação e atas automáticas com editor de texto integrado.
+- 📥 **Importação e Retranscrição de Áudio:** Possibilidade de importar gravações de áudio prévias para transcrição e reprocessamento com modelos variados.
 
-While there are many meeting transcription tools available, this solution stands out by offering:
+---
 
-- **Privacy First:** All processing happens locally on your device.
-- **Cost-Effective:** Uses open-source AI models instead of expensive APIs.
-- **Flexible:** Works offline and supports multiple meeting platforms.
-- **Customizable:** Self-host and modify for your specific needs.
+## Copilot Engine Integrado
 
-<details>
-<summary>The Privacy Problem</summary>
+Além da transcrição convencional, o projeto conta com um **Copilot Engine** integrado (`frontend/src/copilot/` e workspace `copilot/`):
 
-Meeting AI tools create significant privacy and compliance risks across all sectors:
+1. **Separação de Locutores e Canais:** Diferencia perguntas vindas do interlocutor remoto (`remote-system`) da fala do próprio usuário (`microphone`), disparando sugestões de resposta contextuais apenas quando o interlocutor fizer uma pergunta ao usuário.
+2. **Detecção de Perguntas Conversacionais:** Heurística refinada para identificar perguntas naturais e solicitações em português, com descarte de muletas de áudio e deduplicação de 30 segundos.
+3. **Mecanismo de Busca Semântica Lexical (BM25 + Stemmer PT-BR):** Indexação e busca por evidências técnicas relevantes a partir de base de conhecimento em JSON, com suporte a filtragem estrita de escopos/projetos.
+4. **Endurecimento de Segurança Anti-Injection:** Sandboxing de entradas não confiáveis com tags estruturadas (`<untrusted_question>`, `<untrusted_evidence_documents>`) e regras explícitas para impedir ataques de jailbreak ou prompt injection embutidos no áudio da reunião.
 
-- **$4.4M average cost per data breach** (IBM 2024)
-- **€5.88 billion in GDPR fines** issued by 2025
-- **400+ unlawful recording cases** filed in California this year
+---
 
-Whether you're a defense consultant, enterprise executive, legal professional, or healthcare provider, your sensitive discussions shouldn't live on servers you don't control. Cloud meeting tools promise convenience but deliver privacy nightmares with unclear data storage practices and potential unauthorized access.
+## Instalação e Execução
 
-**Meetily solves this:** Complete data sovereignty on your infrastructure, zero vendor lock-in, and full control over your sensitive conversations.
+### Pré-requisitos
+- **Node.js:** Versão 20 ou 24 (recomendado v24)
+- **pnpm:** Versão 9.15.9 (`npm install -g pnpm@9.15.9`)
+- **Rust & Cargo:** Versão estável recente (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- **Compiladores C++:**
+  - *Windows:* Visual Studio Build Tools (C++ development workload)
+  - *Linux:* `build-essential`, `libasound2-dev`, dependências de áudio ALSA/Pulse/PipeWire
+  - *macOS:* Xcode Command Line Tools (`xcode-select --install`)
 
-</details>
+### Compilação a partir do Código-Fonte
 
-## Features
-
-- **Local First:** All processing is done on your machine. No data ever leaves your computer.
-- **Real-time Transcription:** Get a live transcript of your meeting as it happens.
-- **AI-Powered Summaries:** Generate summaries of your meetings using powerful language models.
-- **Multi-Platform:** Works on macOS, Windows, and Linux.
-- **Open Source:** Meetily is open source and free to use.
-- **Flexible AI Provider Support:** Choose from Ollama (local), Claude, Groq, OpenRouter, or use your own OpenAI-compatible endpoint.
-
-## Installation
-
-### 🪟 **Windows**
-
-1. Download the latest `x64-setup.exe` from [Releases](https://github.com/Zackriya-Solutions/meeting-minutes/releases/latest)
-2. Run the installer
-
-> **Windows compatibility:** The packaged installer uses a Vulkan-enabled Whisper build. It requires an AVX2-capable x64 CPU; AVX-512 is not required. CUDA acceleration requires a source build configured with a compatible NVIDIA CUDA toolchain.
-
-### 🍎 **macOS**
-
-1. Download `meetily_0.4.1_aarch64.dmg` from [Releases](https://github.com/Zackriya-Solutions/meeting-minutes/releases/latest)
-2. Open the downloaded `.dmg` file
-3. Drag **Meetily** to your Applications folder
-4. Open **Meetily** from Applications folder
-
-### 🐧 **Linux**
-
-Build from source following our detailed guides:
-
-- [Building on Linux](docs/building_in_linux.md)
-- [General Build Instructions](docs/BUILDING.md)
-
-**Quick start:**
-
+Clone o repositório:
 ```bash
-git clone https://github.com/Zackriya-Solutions/meeting-minutes
-cd meeting-minutes/frontend
-pnpm install --frozen-lockfile
-./build-gpu.sh
+git clone https://github.com/marquimRcc/meeting-copilot.git
+cd meeting-copilot/frontend
 ```
 
-## Key Features in Action
+Instale as dependências com lockfile congelado:
+```bash
+pnpm install --frozen-lockfile
+```
 
-### 🎯 Local Transcription
+Execute em modo de desenvolvimento desktop (Tauri + Next.js):
+```bash
+pnpm run tauri:dev
+```
 
-Transcribe meetings entirely on your device using **Whisper** or **Parakeet** models. No cloud required.
+Para compilar o executável de produção para sua plataforma:
+```bash
+pnpm run tauri:build
+```
 
-<p align="center">
-    <img src="docs/home.png" width="650" style="border-radius: 10px;" alt="Meetily Demo" />
-</p>
+---
 
-### 📥 Import & Enhance `Beta`
+## Arquitetura do Sistema
 
-Import existing audio files to generate transcripts, or enhance to re-transcribe any recorded meeting with a different model or language, all processed locally.
+```
+meeting-copilot/
+├── frontend/
+│   ├── src/                 # Interface gráfica em Next.js (React/Tailwind)
+│   │   ├── copilot/         # Integração frontend do Copilot (Stemmer, BM25, Sandbox)
+│   │   ├── hooks/           # useRecordingStart, useTranscripts, useRecordingState
+│   │   └── services/        # recordingService, indexedDBService
+│   ├── src-tauri/           # Backend nativo em Rust
+│   │   ├── src/audio/       # Captura de microfone, áudio do sistema, mixer, pipeline
+│   │   └── src/recording_commands.rs # Comandos e locks de ciclo de vida de gravação
+│   └── tests/integration/   # Testes de ciclo de vida (session-lifecycle) e canário
+└── copilot/                 # Módulo de simulação e suíte central do Copilot Engine
+    ├── tests/               # Testes automatizados do motor
+    └── demo/                # Demonstração CLI interativa
+```
 
-> Contributed by [Jeremi Joslin](https://github.com/jeremi), improved by [Vishnu P S](https://github.com/p-s-vishnu) and [Mohammed Safvan](https://github.com/mohammedsafvan)
+---
 
-<p align="center">
-    <img src="docs/meetily-export.gif" width="650" style="border-radius: 10px;" alt="Import and Enhance" />
-</p>
+## Testes e Validação Contínua
 
-### 🤖 AI-Powered Summaries
+A base de código possui suítes automatizadas validadas via **GitHub Actions** em ambientes Linux e Windows:
 
-Generate meeting summaries with your choice of AI provider. **Ollama** (local) is recommended, with support for Claude, Groq, OpenRouter, and OpenAI.
+- **Copilot Engine:** 50 testes unitários cobrindo Stemmer, BM25, Diarização, Buffering e Anti-Injection:
+  ```bash
+  cd copilot && node --test tests/*.test.mjs ../frontend/src/copilot/tests/copilot-engine.test.mjs
+  ```
+- **Testes de Integração de Ciclo de Vida & Canário:**
+  ```bash
+  cd frontend && pnpm run test:integration
+  ```
+- **Checagem de Tipos do Frontend:**
+  ```bash
+  cd frontend && pnpm run typecheck
+  ```
+- **Backend Rust (Windows MSVC / Linux):**
+  ```bash
+  cargo check --manifest-path frontend/src-tauri/Cargo.toml
+  cargo test --manifest-path frontend/src-tauri/Cargo.toml --no-run
+  ```
 
-<p align="center">
-    <img src="docs/summary.png" width="650" style="border-radius: 10px;" alt="Summary generation" />
-</p>
+---
 
-<p align="center">
-    <img src="docs/editor1.png" width="650" style="border-radius: 10px;" alt="Editor Summary generation" />
-</p>
+## Licença
 
-### 🔒 Privacy-First Design
+Este projeto é distribuído sob a licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
 
-All data stays on your machine. Transcription models, recordings, and transcripts are stored locally.
+---
 
-<p align="center">
-    <img src="docs/settings.png" width="650" style="border-radius: 10px;" alt="Local Transcription and storage" />
-</p>
+## Agradecimentos
 
-### 🌐 Custom OpenAI Endpoint Support
+Este projeto é um fork evoluído de forma independente a partir do [Meetily](https://github.com/Zackriya-Solutions/meeting-minutes) (Zackriya Solutions), estendido com um motor de Copilot em tempo real, proteção transacional de sessões, compatibilidade Linux/PipeWire e isolamento local.
 
-Use your own OpenAI-compatible endpoint for AI summaries. Perfect for organizations with custom AI infrastructure or preferred providers.
-
-<p align="center">
-    <img src="docs/custom.png" width="650" style="border-radius: 10px;" alt="Custom OpenAI Endpoint Configuration" />
-</p>
-
-### 🎙️ Professional Audio Mixing
-
-Capture microphone and system audio simultaneously with intelligent ducking and clipping prevention.
-
-<p align="center">
-    <img src="docs/audio.png" width="650" style="border-radius: 10px;" alt="Device selection" />
-</p>
-
-### ⚡ GPU Acceleration
-
-Acceleration depends on the platform and build you use:
-
-- **macOS packages:** Metal and CoreML are enabled automatically.
-- **Windows packages:** Whisper is built with Vulkan support.
-- **Linux:** Build from source with the acceleration configuration appropriate for your system.
-
-CUDA is available through an appropriately configured NVIDIA source build; the standard Windows installer does not select it automatically.
-
-## System Architecture
-
-Meetily is a single, self-contained application built with [Tauri](https://tauri.app/). It uses a Rust-based backend to handle all the core logic, and a Next.js frontend for the user interface.
-
-For more details, see the [Architecture documentation](docs/architecture.md).
-
-## For Developers
-
-If you want to contribute to Meetily or build it from source, you'll need to have Rust and Node.js installed. For detailed build instructions, please see the [Building from Source guide](docs/BUILDING.md).
-
-## Meetily Pro
-
-<p align="center">
-    <img src="docs/pv2.1.png" width="650" style="border-radius: 10px;" alt="Upcoming version" />
-</p>
-
-**Meetily PRO** is a professional-grade solution with enhanced accuracy and advanced features for serious users and teams. Built on a different codebase with superior transcription models and enterprise-ready capabilities.
-
-### Community Thank-You Offer
-
-Meetily Community Edition will remain free and open source. PRO exists for users and teams who want a more advanced meeting workflow, including higher transcription accuracy, custom summary templates, advanced exports, auto-meeting detection, and self-hosted deployment options.
-
-For the community that helped Meetily grow, we are making the upgrade easier: use coupon code **LAUNCH20** for **20% off Meetily PRO** until the next Meetily Community Edition release.
-
-Speaker diarization is planned for mid-June, bringing automatic speaker separation to PRO meetings.
-
-### Key Advantages Over Community Edition:
-
-- **Enhanced Accuracy**: Superior transcription models for professional-grade accuracy
-- **Custom Summary Templates**: Tailor summaries to your specific workflow and needs
-- **Advanced Export Options**: PDF, DOCX, and Markdown exports with formatting
-- **Auto-detect and Join Meetings**: Automatic meeting detection and joining
-- **Speaker Identification**: Distinguish between speakers automatically *(Coming Soon)*
-- **Chat with Meetings**: AI-powered meeting insights and queries *(Coming Soon)*
-- **Calendar Integration**: Seamless integration with your calendar *(Coming Soon)*
-- **Self-Hosted Deployment**: Deploy on your own infrastructure for teams
-- **GDPR Compliance Built-In**: Privacy by design architecture with complete audit trails
-- **Priority Support**: Dedicated support for PRO users
-
-### Who is PRO for?
-
-- **Professionals** who need the highest accuracy for critical meetings
-- **Teams and organizations** (2-100 users) requiring self-hosted deployment
-- **Power users** who need advanced export formats and custom workflows
-- **Compliance-focused organizations** requiring GDPR readiness
-
-> **Note:** Meetily Community Edition remains **free & open source forever** with local transcription, AI summaries, and core features. PRO is a separate professional solution for users who need enhanced accuracy and advanced capabilities.
-
-For organizations needing 100+ users or managed compliance solutions, explore [Meetily Enterprise](https://meetily.ai/enterprise/).
-
-**Learn more about pricing and features:** [https://meetily.ai/pro/](https://meetily.ai/pro/)
-
-## Contributing
-
-We welcome contributions from the community! If you have any questions or suggestions, please open an issue or submit a pull request. Please follow the established project structure and guidelines. For more details, refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file.
-
-Thanks for all the contributions. Our community is what makes this project possible.
-
-## License
-
-MIT License - Feel free to use this project for your own purposes.
-
-## Acknowledgments
-
-- We borrowed some code from [Whisper.cpp](https://github.com/ggerganov/whisper.cpp).
-- We borrowed some code from [Screenpipe](https://github.com/mediar-ai/screenpipe).
-- We borrowed some code from [transcribe-rs](https://crates.io/crates/transcribe-rs).
-- Thanks to **NVIDIA** for developing the **Parakeet** model.
-- Thanks to [istupakov](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) for providing the **ONNX conversion** of the Parakeet model.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=Zackriya-Solutions/meetily&type=date&legend=top-left)](https://www.star-history.com/?repos=Zackriya-Solutions%2Fmeetily&type=date&legend=bottom-right)
+Reconhecimentos a outros projetos de código aberto fundamentais:
+- [Whisper.cpp](https://github.com/ggerganov/whisper.cpp) por Georgi Gerganov
+- [Tauri](https://tauri.app/)
+- [Screenpipe](https://github.com/mediar-ai/screenpipe)
+- [transcribe-rs](https://crates.io/crates/transcribe-rs)
+- **NVIDIA** pelo modelo **Parakeet** e [istupakov](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) pela conversão ONNX.
