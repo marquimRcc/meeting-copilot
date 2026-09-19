@@ -424,16 +424,28 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
             }
         };
 
-    #[cfg(not(target_os = "macos"))]
-    let microphone_device = resolve_mic_or_default(&app, preferred_mic_name.as_deref());
+    let system_only = std::env::var("MEETILY_RECORD_SYSTEM_ONLY").map(|v| v == "1").unwrap_or(false)
+        || preferred_mic_name.as_deref().map(|n| n.eq_ignore_ascii_case("none")).unwrap_or(false);
+
+    let microphone_device = if system_only {
+        info!("🎧 Headphone/System audio only mode: Microphone capture disabled");
+        None
+    } else {
+        #[cfg(not(target_os = "macos"))]
+        {
+            resolve_mic_or_default(&app, preferred_mic_name.as_deref())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            resolve_mic_or_default(&app, preferred_mic_name.as_deref())
+        }
+    };
 
     let system_device = resolve_system_or_default(preferred_system_name.as_deref());
 
     #[cfg(target_os = "macos")]
     prepare_audio_for_recording(system_device.as_deref()).await?;
 
-    #[cfg(target_os = "macos")]
-    let microphone_device = resolve_mic_or_default(&app, preferred_mic_name.as_deref());
 
     // Async-first approach - no more blocking operations!
     info!("🚀 Starting async recording initialization");

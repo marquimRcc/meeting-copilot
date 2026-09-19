@@ -161,13 +161,31 @@ pub async fn get_device_and_config(
                         .trim();
 
                     if let Ok(pulse_host) = cpal::host_from_id(cpal::HostId::Alsa) {
-                        for device in pulse_host.input_devices()? {
-                            if let Ok(name) = device.name() {
-                                if name == clean_name || name == audio_device.name {
-                                    let default_config = device
-                                        .default_input_config()
-                                        .map_err(|e| anyhow!("Failed to get default input config: {}", e))?;
-                                    return Ok((device, default_config));
+                        if let Ok(devices) = pulse_host.input_devices() {
+                            for device in devices {
+                                if let Ok(name) = device.name() {
+                                    if name == clean_name || name == audio_device.name {
+                                        let default_config = device
+                                            .default_input_config()
+                                            .map_err(|e| anyhow!("Failed to get default input config: {}", e))?;
+                                        return Ok((device, default_config));
+                                    }
+                                }
+                            }
+                        }
+
+                        // If clean_name is "default" or general, use the monitor device (e.g. meetily_monitor)
+                        if clean_name == "default" || clean_name.is_empty() {
+                            if let Ok(devices) = pulse_host.input_devices() {
+                                for device in devices {
+                                    if let Ok(name) = device.name() {
+                                        if name.contains("monitor") {
+                                            if let Ok(default_config) = device.default_input_config() {
+                                                log::info!("✅ Mapping Linux system audio to monitor device: {}", name);
+                                                return Ok((device, default_config));
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -176,7 +194,7 @@ pub async fn get_device_and_config(
                     // Fallback to default host input devices (e.g. PipeWire Pulse layer)
                     for device in host.input_devices()? {
                         if let Ok(name) = device.name() {
-                            if name == clean_name || name == audio_device.name {
+                            if name == clean_name || name == audio_device.name || (clean_name == "default" && name.contains("monitor")) {
                                 let default_config = device
                                     .default_input_config()
                                     .map_err(|e| anyhow!("Failed to get default input config: {}", e))?;
