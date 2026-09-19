@@ -74,12 +74,19 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.altKey && (event.key === 'q' || event.key === 'Q')) {
-        setIsCopilotOpen(true);
+        setIsCopilotOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Abrir o painel automaticamente quando uma pergunta relevante for detectada ou começar a gerar
+  useEffect(() => {
+    if (copilot.currentQuestion || copilot.streamingAnswer || copilot.isGenerating) {
+      setIsCopilotOpen(true);
+    }
+  }, [copilot.currentQuestion, copilot.streamingAnswer, copilot.isGenerating]);
 
   // Startup recovery check
   useEffect(() => {

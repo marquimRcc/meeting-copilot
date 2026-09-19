@@ -143,9 +143,9 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('primaryLanguage');
-      return saved || 'auto';
+      return saved || 'pt';
     }
-    return 'auto';
+    return 'pt';
   });
 
   // UI preferences state
@@ -374,7 +374,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     openrouter: [],
     openai: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'],
     'builtin-ai': [],
-    'custom-openai': [],
+    'custom-openai': ['qwen2.5-coder-14b-instruct', 'deepseek-r1-distill-qwen-14b', 'google/gemma-4-e4b'],
   };
 
   // Toggle confidence indicator with localStorage persistence

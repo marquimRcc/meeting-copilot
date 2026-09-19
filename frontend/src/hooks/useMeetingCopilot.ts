@@ -153,8 +153,12 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
       model = model || 'gpt-4o-mini';
       apiKey = providerApiKeys?.openai || modelConfig.apiKey || undefined;
     } else {
-      // Provedores não compatíveis diretamente com streaming chat/completions (claude, builtin-ai, etc.)
-      throw new Error(`O provedor "${rawProvider}" não suporta streaming direto do Copiloto. Selecione OpenAI, Groq, OpenRouter ou LM Studio (Custom OpenAI) nas configurações.`);
+      // Se estiver configurado com provedor não compatível (ex: builtin-ai / claude) ou inicializando,
+      // utiliza LM Studio (127.0.0.1:1234) como fallback automático preferencial de alta performance local
+      console.warn(`[Copilot] Provedor "${rawProvider}" não suporta streaming direto. Usando fallback LM Studio local (qwen2.5-coder-14b-instruct).`);
+      provider = 'custom-openai';
+      endpoint = 'http://127.0.0.1:1234/v1';
+      model = 'qwen2.5-coder-14b-instruct';
     }
 
     return {

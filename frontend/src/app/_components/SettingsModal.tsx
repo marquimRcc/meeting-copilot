@@ -103,12 +103,13 @@ export function SettingsModals({
                         });
                       }}
                     >
-                      <option value="builtin-ai">Built-in AI</option>
-                      <option value="claude">Claude</option>
-                      <option value="groq">Groq</option>
+                      <option value="custom-openai">LM Studio (Local / Custom OpenAI)</option>
                       <option value="ollama">Ollama</option>
-                      <option value="openrouter">OpenRouter</option>
                       <option value="openai">OpenAI</option>
+                      <option value="groq">Groq</option>
+                      <option value="claude">Claude</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="builtin-ai">Built-in AI</option>
                     </select>
 
                     <select

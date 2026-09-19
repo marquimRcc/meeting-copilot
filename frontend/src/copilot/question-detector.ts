@@ -6,8 +6,8 @@ import { normalizePt } from './stemmer-pt.ts';
  */
 const RHETORICAL_AND_FILLER_PATTERNS = [
   /^(ne|beleza|certo|entendeu|entende|tranquilo|ok|ta bom|tudo bem)\??$/i,
-  /^(ta me ouvindo|consegue me ouvir|esta me ouvindo|me ouvem|me ouve)\??$/i,
-  /^(consegue ver minha tela|esta vendo minha tela|veem minha tela)\??$/i,
+  /^(ta me ouvindo|consegue me ouvir|esta me ouvindo|me ouvem|me ouve|voces estao me ouvindo|estao me ouvindo|ouviram)\??$/i,
+  /^(consegue ver minha tela|esta vendo minha tela|veem minha tela|estao vendo minha tela)\??$/i,
   /^(alo|oi|ola|bom dia|boa tarde|boa noite)\??$/i,
 ];
 
@@ -39,7 +39,7 @@ const REQUEST_PATTERNS = [
  */
 export class QuestionDetector {
   private recentQuestions = new Map<string, number>();
-  private minIntervalMs = 25000; // 25s deduplicação
+  private minIntervalMs = 8000; // 8s deduplicação (otimizado para ritmo de entrevista)
 
   detect(segment: CopilotSegment): CopilotQuestion | null {
     if (!segment || !segment.final || segment.channel !== 'remote-system') {
