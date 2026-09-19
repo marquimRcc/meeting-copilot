@@ -100,10 +100,12 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(undefi
 export function ConfigProvider({ children }: { children: ReactNode }) {
   // Model configuration state
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
-    provider: 'ollama',
-    model: 'llama3.2:latest',
+    provider: 'custom-openai',
+    model: 'qwen2.5-coder-14b-instruct',
     whisperModel: 'large-v3',
-    ollamaEndpoint: null
+    ollamaEndpoint: null,
+    customOpenAIEndpoint: 'http://127.0.0.1:1234/v1',
+    customOpenAIModel: 'qwen2.5-coder-14b-instruct',
   });
   const [isModelConfigLoading, setIsModelConfigLoading] = useState(true);
 

@@ -28,7 +28,7 @@ export default function Home() {
   const [isRecording, setIsRecordingState] = useState(false);
   const [barHeights, setBarHeights] = useState(['58%', '76%', '58%']);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
-  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(true);
   const copilot = useMeetingCopilot();
 
   // Use contexts for state management

@@ -53,7 +53,7 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [scopes, setScopes] = useState<string[]>(['backend', 'incidentes', 'java']);
-  const [isAutoTrigger, setIsAutoTrigger] = useState<boolean>(false);
+  const [isAutoTrigger, setIsAutoTrigger] = useState<boolean>(true);
   const [health, setHealth] = useState<HealthCheckResult | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
 
@@ -122,40 +122,38 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
 
   // Monta a configuração do provedor com base no ConfigContext do Meetily
   const getCopilotConfig = useCallback((): CopilotConfig => {
-    const rawProvider = modelConfig.provider || 'ollama';
-    let provider: CopilotConfig['provider'] = 'ollama';
-    let endpoint: string | undefined;
-    let model = modelConfig.model || '';
-    let apiKey: string | undefined;
+    const rawProvider = modelConfig.provider || 'custom-openai';
+    let provider: CopilotConfig['provider'] = 'custom-openai';
+    let endpoint: string | undefined = modelConfig.customOpenAIEndpoint || 'http://127.0.0.1:1234/v1';
+    let model = modelConfig.customOpenAIModel || modelConfig.model || 'qwen2.5-coder-14b-instruct';
+    let apiKey: string | undefined = modelConfig.customOpenAIApiKey || undefined;
 
-    if (rawProvider === 'ollama') {
-      provider = 'ollama';
-      endpoint = modelConfig.ollamaEndpoint || 'http://127.0.0.1:11434';
-      model = model || 'llama3.2';
-    } else if (rawProvider === 'custom-openai') {
+    if (rawProvider === 'custom-openai') {
       provider = 'custom-openai';
       endpoint = modelConfig.customOpenAIEndpoint || 'http://127.0.0.1:1234/v1';
-      model = modelConfig.customOpenAIModel || model || 'qwen2.5-coder-14b-instruct';
+      model = modelConfig.customOpenAIModel || modelConfig.model || 'qwen2.5-coder-14b-instruct';
       apiKey = modelConfig.customOpenAIApiKey || undefined;
+    } else if (rawProvider === 'ollama' && modelConfig.ollamaEndpoint) {
+      provider = 'ollama';
+      endpoint = modelConfig.ollamaEndpoint;
+      model = modelConfig.model || 'llama3.2';
     } else if (rawProvider === 'groq') {
       provider = 'openai';
       endpoint = 'https://api.groq.com/openai/v1';
-      model = model || 'llama-3.3-70b-versatile';
+      model = modelConfig.model || 'llama-3.3-70b-versatile';
       apiKey = providerApiKeys?.groq || modelConfig.apiKey || undefined;
     } else if (rawProvider === 'openrouter') {
       provider = 'openai';
       endpoint = 'https://openrouter.ai/api/v1';
-      model = model || 'meta-llama/llama-3.3-70b-instruct';
+      model = modelConfig.model || 'meta-llama/llama-3.3-70b-instruct';
       apiKey = providerApiKeys?.openrouter || modelConfig.apiKey || undefined;
     } else if (rawProvider === 'openai') {
       provider = 'openai';
       endpoint = 'https://api.openai.com/v1';
-      model = model || 'gpt-4o-mini';
+      model = modelConfig.model || 'gpt-4o-mini';
       apiKey = providerApiKeys?.openai || modelConfig.apiKey || undefined;
     } else {
-      // Se estiver configurado com provedor não compatível (ex: builtin-ai / claude) ou inicializando,
-      // utiliza LM Studio (127.0.0.1:1234) como fallback automático preferencial de alta performance local
-      console.warn(`[Copilot] Provedor "${rawProvider}" não suporta streaming direto. Usando fallback LM Studio local (qwen2.5-coder-14b-instruct).`);
+      // Padrão de alta performance local: LM Studio (127.0.0.1:1234)
       provider = 'custom-openai';
       endpoint = 'http://127.0.0.1:1234/v1';
       model = 'qwen2.5-coder-14b-instruct';
@@ -328,18 +326,10 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
         processedSegmentsRef.current.set(segId, t.text);
       }
 
-      // Precedência estrita e inviolável de canal:
-      // A) Origem física 'Microphone' é SEMPRE 'microphone' (NUNCA sobrescrever por preferência, garantindo que fala do usuário não simule pergunta de interlocutor)
-      // B) Origem física 'System Audio' é SEMPRE 'remote-system'
-      // C) Se a origem de hardware for nula/indeterminada mas o microfone estava desligado ('none'), assume loopback exclusivo ('remote-system')
-      let channel: CopilotSegment['channel'] = 'unknown';
-      if (t.source === 'Microphone') {
-        channel = 'microphone';
-      } else if (t.source === 'System Audio') {
-        channel = 'remote-system';
-      } else if (isLoopbackOnly) {
-        channel = 'remote-system';
-      }
+      // Precedência de canal:
+      // Apenas se a origem for explicitamente 'Microphone', classifica como fala do usuário ('microphone').
+      // Todo o restante (áudio do sistema, chamadas, YouTube, fone) é tratado como 'remote-system'.
+      const channel: CopilotSegment['channel'] = t.source === 'Microphone' ? 'microphone' : 'remote-system';
 
       const segment: CopilotSegment = {
         id: segId,
@@ -354,10 +344,11 @@ export function useMeetingCopilot(): UseMeetingCopilotReturn {
 
       const { isQuestionEligible } = bufferRef.current.append(segment);
 
-      // O gatilho automático dispara APENAS para canais 'remote-system' (áudio de outros participantes)
+      // O gatilho automático dispara para canais 'remote-system' (áudio de outros participantes / YouTube)
       if (isAutoTriggerRef.current && isQuestionEligible && channel === 'remote-system') {
         const detected = detectorRef.current.detect(segment);
         if (detected) {
+          console.log('[Copilot] 🎯 Pergunta detectada automaticamente:', detected.text);
           executeCopilotSuggestion(detected.text, detected);
         }
       }
