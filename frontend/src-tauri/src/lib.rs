@@ -740,6 +740,9 @@ pub fn run() {
             api::api_save_custom_openai_config,
             api::api_get_custom_openai_config,
             api::api_test_custom_openai_connection,
+            // Copilot native commands
+            api::api_copilot_check_health,
+            api::api_copilot_stream_chat,
             // Summary commands
             summary::commands::api_process_transcript,
             summary::commands::api_get_summary,

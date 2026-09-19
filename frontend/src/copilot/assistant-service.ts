@@ -1,4 +1,6 @@
 import type { CopilotConfig, SuggestionRequest } from './types.ts';
+import { invoke } from '@tauri-apps/api/core';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 export interface SuggestionCallbacks {
   onToken?: (token: string, accumulated: string) => void;
@@ -59,10 +61,6 @@ export interface HealthCheckResult {
   latencyMs: number;
 }
 
-/**
- * Normaliza endpoints de IA substituindo localhost por 127.0.0.1 em portas locais
- * para evitar falhas de resolução IPv6 (::1) no Linux/Windows, e remove barras finais.
- */
 export function normalizeEndpoint(endpoint?: string, defaultEndpoint = 'http://127.0.0.1:11434'): string {
   if (!endpoint || !endpoint.trim()) {
     return defaultEndpoint;
@@ -75,26 +73,20 @@ export function normalizeEndpoint(endpoint?: string, defaultEndpoint = 'http://1
 }
 
 /**
- * Serviço de comunicação com LLM (Ollama / OpenAI / LM Studio) com suporte nativo a streaming de tokens.
+ * Serviço nativo de comunicação com LLM via Rust/Tauri.
+ * Elimina 100% dos bloqueios de CORS e 'Load failed' do WebKitGTK.
  */
 export class CopilotAssistantService {
-  private activeController: AbortController | null = null;
+  private activeCancelFn: (() => void) | null = null;
 
-  /**
-   * Cancela qualquer geração em andamento.
-   */
   cancel(): void {
-    if (this.activeController) {
-      this.activeController.abort();
-      this.activeController = null;
+    if (this.activeCancelFn) {
+      this.activeCancelFn();
+      this.activeCancelFn = null;
     }
   }
 
-  /**
-   * Realiza health check não bloqueante no servidor de IA (LM Studio / Ollama / Custom OpenAI).
-   */
   async checkHealth(config: CopilotConfig): Promise<HealthCheckResult> {
-    const startTime = Date.now();
     const isOllama = config.provider === 'ollama';
     const defaultEp = isOllama
       ? 'http://127.0.0.1:11434'
@@ -103,73 +95,27 @@ export class CopilotAssistantService {
         : 'https://api.openai.com/v1';
 
     const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
 
     try {
-      const res = await fetch('/api/copilot/health', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          provider: config.provider,
-          endpoint,
-          apiKey: config.apiKey
-        })
-      });
-      clearTimeout(timer);
-      const latencyMs = Date.now() - startTime;
-      if (!res.ok) {
-        return {
-          ok: false,
-          provider: config.provider,
-          endpoint,
-          statusText: `Servidor retornou status HTTP ${res.status}: ${res.statusText}`,
-          models: [],
-          latencyMs
-        };
-      }
-      const json = await res.json();
-      const models: string[] = isOllama
-        ? (Array.isArray(json.models) ? json.models.map((m: any) => m.name || m.model || '').filter(Boolean) : [])
-        : (Array.isArray(json.data) ? json.data.map((m: any) => m.id || '').filter(Boolean) : []);
-
-      return {
-        ok: true,
-        provider: config.provider,
+      const res = await invoke<HealthCheckResult>('api_copilot_check_health', {
         endpoint,
-        statusText: models.length > 0
-          ? `${config.provider === 'custom-openai' ? 'LM Studio' : isOllama ? 'Ollama' : 'Servidor'} online (${models.length} modelos detectados)`
-          : 'Servidor online',
-        models,
-        latencyMs
-      };
+        provider: config.provider,
+        apiKey: config.apiKey || null
+      });
+      return res;
     } catch (err: unknown) {
-      clearTimeout(timer);
-      const latencyMs = Date.now() - startTime;
       const rawMsg = err instanceof Error ? err.message : String(err);
-      let statusText = `Servidor inacessível em ${endpoint}`;
-      if (controller.signal.aborted) {
-        statusText = `Tempo limite esgotado ao conectar em ${endpoint} (4s)`;
-      } else if (rawMsg.includes('Failed to fetch') || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('fetch failed')) {
-        statusText = isOllama
-          ? `Ollama offline em ${endpoint}. Inicie com 'ollama serve'`
-          : `LM Studio offline em ${endpoint}. Inicie o servidor local na porta 1234`;
-      }
       return {
         ok: false,
         provider: config.provider,
         endpoint,
-        statusText,
+        statusText: `Erro ao conectar: ${rawMsg}`,
         models: [],
-        latencyMs
+        latencyMs: 0
       };
     }
   }
 
-  /**
-   * Dispara a geração de sugestão com streaming.
-   */
   async generateSuggestion(
     request: SuggestionRequest,
     config: CopilotConfig,
@@ -177,175 +123,57 @@ export class CopilotAssistantService {
   ): Promise<string> {
     this.cancel();
 
-    const controller = new AbortController();
-    this.activeController = controller;
-
     const { system, user } = buildPrompt(request);
+    const defaultEp = config.provider === 'custom-openai' ? 'http://127.0.0.1:1234/v1' : 'https://api.openai.com/v1';
+    const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
+    const model = config.model || (config.provider === 'custom-openai' ? 'qwen2.5-coder-14b-instruct' : 'gpt-4o-mini');
+
+    let unlistenToken: UnlistenFn | null = null;
+    let unlistenDone: UnlistenFn | null = null;
+    let cancelled = false;
+
+    this.activeCancelFn = () => {
+      cancelled = true;
+      if (unlistenToken) unlistenToken();
+      if (unlistenDone) unlistenDone();
+    };
 
     try {
-      if (config.provider === 'ollama') {
-        return await this.streamOllama(config, system, user, controller.signal, callbacks);
-      } else {
-        return await this.streamOpenAI(config, system, user, controller.signal, callbacks);
+      unlistenToken = await listen<{ token: string; accumulated: string }>('copilot-token', (event) => {
+        if (!cancelled && event.payload) {
+          callbacks.onToken?.(event.payload.token, event.payload.accumulated);
+        }
+      });
+
+      unlistenDone = await listen<{ full_text: string }>('copilot-done', (event) => {
+        if (!cancelled && event.payload) {
+          callbacks.onComplete?.(event.payload.full_text);
+        }
+      });
+
+      const fullText = await invoke<string>('api_copilot_stream_chat', {
+        endpoint,
+        model,
+        systemPrompt: system,
+        userPrompt: user,
+        apiKey: config.apiKey || null,
+        provider: config.provider
+      });
+
+      if (!cancelled) {
+        callbacks.onComplete?.(fullText);
       }
+      return fullText;
     } catch (err: unknown) {
-      if (controller.signal.aborted) {
-        return '';
-      }
+      if (cancelled) return '';
       const rawMsg = err instanceof Error ? err.message : String(err);
-      let friendlyMsg = rawMsg;
-      if (rawMsg.includes('Failed to fetch') || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('fetch failed')) {
-        const ep = config.endpoint || (config.provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234/v1');
-        friendlyMsg = `Não foi possível conectar ao servidor de IA em ${ep}. Certifique-se de que o servidor local (LM Studio na porta 1234 ou Ollama na porta 11434) está ativo, ou configure sua API nas configurações do Meetily.`;
-      }
-      const error = new Error(friendlyMsg);
+      const error = new Error(rawMsg);
       callbacks.onError?.(error);
       throw error;
     } finally {
-      if (this.activeController === controller) {
-        this.activeController = null;
-      }
+      if (unlistenToken) unlistenToken();
+      if (unlistenDone) unlistenDone();
+      if (this.activeCancelFn) this.activeCancelFn = null;
     }
-  }
-
-  /**
-   * Streaming com Ollama API (/api/chat) via proxy interno.
-   */
-  private async streamOllama(
-    config: CopilotConfig,
-    system: string,
-    user: string,
-    signal: AbortSignal,
-    callbacks: SuggestionCallbacks
-  ): Promise<string> {
-    const endpoint = normalizeEndpoint(config.endpoint, 'http://127.0.0.1:11434');
-
-    const response = await fetch('/api/copilot/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-      body: JSON.stringify({
-        provider: 'ollama',
-        endpoint,
-        model: config.model || 'llama3.2',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Erro na chamada Ollama (${response.status}): ${response.statusText}`);
-    }
-
-    if (!response.body) {
-      throw new Error('Corpo de resposta vazio retornado pelo Ollama.');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let accumulated = '';
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line);
-          const token = parsed.message?.content || '';
-          if (token) {
-            accumulated += token;
-            callbacks.onToken?.(token, accumulated);
-          }
-        } catch {
-          // Linha parcial ou incompleta
-        }
-      }
-    }
-
-    callbacks.onComplete?.(accumulated);
-    return accumulated;
-  }
-
-  /**
-   * Streaming com OpenAI API (/v1/chat/completions) via proxy interno.
-   */
-  private async streamOpenAI(
-    config: CopilotConfig,
-    system: string,
-    user: string,
-    signal: AbortSignal,
-    callbacks: SuggestionCallbacks
-  ): Promise<string> {
-    const defaultEp = config.provider === 'custom-openai' ? 'http://127.0.0.1:1234/v1' : 'https://api.openai.com/v1';
-    const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
-
-    const response = await fetch('/api/copilot/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-      body: JSON.stringify({
-        provider: config.provider,
-        endpoint,
-        model: config.model || (config.provider === 'custom-openai' ? 'qwen2.5-coder-14b-instruct' : 'gpt-4o-mini'),
-        apiKey: config.apiKey,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Erro na chamada OpenAI/Custom (${response.status}): ${response.statusText}`);
-    }
-
-    if (!response.body) {
-      throw new Error('Corpo de resposta vazio retornado pela API.');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let accumulated = '';
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
-        if (trimmed === 'data: [DONE]') break;
-
-        if (trimmed.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(trimmed.slice(6));
-            const token = data.choices?.[0]?.delta?.content || '';
-            if (token) {
-              accumulated += token;
-              callbacks.onToken?.(token, accumulated);
-            }
-          } catch {
-            // Ignorar chunk SSE malformado
-          }
-        }
-      }
-    }
-
-    callbacks.onComplete?.(accumulated);
-    return accumulated;
   }
 }
