@@ -39,6 +39,19 @@ pub fn default_output_device() -> Result<AudioDevice> {
     {
         // On Linux, system audio capture must use a PulseAudio/PipeWire/ALSA monitor input device.
         let host = cpal::default_host();
+
+        // 0. Priorizar dispositivo monitor dedicado Meetily se existir
+        if let Ok(inputs) = host.input_devices() {
+            for device in inputs {
+                if let Ok(name) = device.name() {
+                    if name == "meetily_monitor" || name == "meetily_system_source" {
+                        info!("✅ Found dedicated Meetily system audio monitor: {}", name);
+                        return Ok(AudioDevice::new(name, DeviceType::Output));
+                    }
+                }
+            }
+        }
+
         let default_out_name = host.default_output_device().and_then(|d| d.name().ok());
 
         // 1. Tentar casar exatamente o monitor associado à saída padrão ativa do sistema

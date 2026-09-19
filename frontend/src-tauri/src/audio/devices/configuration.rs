@@ -179,7 +179,7 @@ pub async fn get_device_and_config(
                             if let Ok(devices) = pulse_host.input_devices() {
                                 for device in devices {
                                     if let Ok(name) = device.name() {
-                                        if name.contains("monitor") {
+                                        if name.contains("monitor") || name.contains("meetily") {
                                             if let Ok(default_config) = device.default_input_config() {
                                                 log::info!("✅ Mapping Linux system audio to monitor device: {}", name);
                                                 return Ok((device, default_config));
@@ -194,7 +194,7 @@ pub async fn get_device_and_config(
                     // Fallback to default host input devices (e.g. PipeWire Pulse layer)
                     for device in host.input_devices()? {
                         if let Ok(name) = device.name() {
-                            if name == clean_name || name == audio_device.name || (clean_name == "default" && name.contains("monitor")) {
+                            if name == clean_name || name == audio_device.name || (clean_name == "default" && (name.contains("monitor") || name.contains("meetily"))) {
                                 let default_config = device
                                     .default_input_config()
                                     .map_err(|e| anyhow!("Failed to get default input config: {}", e))?;

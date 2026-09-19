@@ -17,16 +17,15 @@ export MEETILY_RECORD_SYSTEM_ONLY=1
 mkdir -p /tmp/libwebkit2gtk-4_1-0
 cp -a /home/marcos/.local-dev/usr/libexec/libwebkit2gtk-4_1-0/* /tmp/libwebkit2gtk-4_1-0/ 2>/dev/null || true
 
-# Configurar dispositivo monitor ALSA/PipeWire para captura do áudio do sistema (YouTube/Desktop)
-DEFAULT_SINK=$(pactl get-default-sink 2>/dev/null || wpctl status 2>/dev/null | grep -A 5 "Default Configured Devices:" | grep "Audio/Sink" | awk '{print $2}')
-if [ -z "$DEFAULT_SINK" ]; then
-    DEFAULT_SINK="alsa_output.usb-Actions_G06-BT_0123456789AB-01.analog-stereo"
-fi
+# Configurar dispositivo monitor PipeWire/ALSA para captura exclusiva do áudio do sistema (YouTube/Desktop)
+pkill -f "meetily_system_source" 2>/dev/null || true
+pw-loopback -i 'stream.capture.sink=true' -o 'media.class=Audio/Source node.name=meetily_system_source node.description="Meetily System Audio Source"' &
+PW_LOOP_PID=$!
 
-cat << EOF > ~/.asoundrc
+cat << 'EOF' > ~/.asoundrc
 pcm.meetily_monitor {
     type pipewire
-    capture_node "${DEFAULT_SINK}"
+    capture_node "meetily_system_source"
     hint {
         show on
         description "System Audio Monitor"
@@ -34,17 +33,17 @@ pcm.meetily_monitor {
 }
 EOF
 
+trap "kill \$PW_LOOP_PID 2>/dev/null || true; pkill -f meetily_system_source 2>/dev/null || true" EXIT INT TERM
+
 . "$HOME/.cargo/env"
 cd /home/marcos/meeting-copilot/frontend
-
-
 
 # Iniciar Next.js e aguardar compilação completa antes de abrir a janela
 if ! curl -s http://localhost:3118/ >/dev/null 2>&1; then
     echo "Iniciando servidor Next.js..."
     npm run dev &
     NEXT_PID=$!
-    trap "kill $NEXT_PID 2>/dev/null || true" EXIT INT TERM
+    trap "kill \$NEXT_PID \$PW_LOOP_PID 2>/dev/null || true; pkill -f meetily_system_source 2>/dev/null || true" EXIT INT TERM
     
     echo "Aguardando compilação do Next.js..."
     for i in {1..30}; do
