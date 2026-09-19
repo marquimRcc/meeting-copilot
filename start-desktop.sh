@@ -18,5 +18,24 @@ cp -a /home/marcos/.local-dev/usr/libexec/libwebkit2gtk-4_1-0/* /tmp/libwebkit2g
 . "$HOME/.cargo/env"
 
 cd /home/marcos/meeting-copilot/frontend
-exec npm run tauri:dev:cpu
+
+# Iniciar Next.js e aguardar compilação completa antes de abrir a janela
+if ! curl -s http://localhost:3118/ >/dev/null 2>&1; then
+    echo "Iniciando servidor Next.js..."
+    npm run dev &
+    NEXT_PID=$!
+    trap "kill $NEXT_PID 2>/dev/null || true" EXIT INT TERM
+    
+    echo "Aguardando compilação do Next.js..."
+    for i in {1..30}; do
+        if curl -s http://localhost:3118/ | grep -q "html"; then
+            echo "Next.js compilado com sucesso!"
+            break
+        fi
+        sleep 0.5
+    done
+fi
+
+echo "Iniciando aplicação desktop..."
+npx tauri dev
 
