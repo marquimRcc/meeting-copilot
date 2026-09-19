@@ -107,67 +107,43 @@ export class CopilotAssistantService {
     const timer = setTimeout(() => controller.abort(), 4000);
 
     try {
-      if (isOllama) {
-        const url = `${endpoint}/api/tags`;
-        const res = await fetch(url, { method: 'GET', signal: controller.signal });
-        clearTimeout(timer);
-        const latencyMs = Date.now() - startTime;
-        if (!res.ok) {
-          return {
-            ok: false,
-            provider: 'ollama',
-            endpoint,
-            statusText: `Ollama retornou status HTTP ${res.status}: ${res.statusText}`,
-            models: [],
-            latencyMs
-          };
-        }
-        const json = await res.json();
-        const models: string[] = Array.isArray(json.models)
-          ? json.models.map((m: { name?: string; model?: string }) => m.name || m.model || '').filter(Boolean)
-          : [];
-        return {
-          ok: true,
-          provider: 'ollama',
-          endpoint,
-          statusText: models.length > 0 ? `Ollama online (${models.length} modelos disponíveis)` : 'Ollama online (nenhum modelo baixado)',
-          models,
-          latencyMs
-        };
-      } else {
-        const url = `${endpoint}/models`;
-        const headers: Record<string, string> = {};
-        if (config.apiKey) {
-          headers['Authorization'] = `Bearer ${config.apiKey}`;
-        }
-        const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
-        clearTimeout(timer);
-        const latencyMs = Date.now() - startTime;
-        if (!res.ok) {
-          return {
-            ok: false,
-            provider: config.provider,
-            endpoint,
-            statusText: `Servidor retornou status HTTP ${res.status}: ${res.statusText}`,
-            models: [],
-            latencyMs
-          };
-        }
-        const json = await res.json();
-        const models: string[] = Array.isArray(json.data)
-          ? json.data.map((m: { id?: string }) => m.id || '').filter(Boolean)
-          : [];
-        return {
-          ok: true,
+      const res = await fetch('/api/copilot/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
           provider: config.provider,
           endpoint,
-          statusText: models.length > 0
-            ? `${config.provider === 'custom-openai' ? 'LM Studio' : 'Servidor'} online (${models.length} modelos detectados)`
-            : 'Servidor online',
-          models,
+          apiKey: config.apiKey
+        })
+      });
+      clearTimeout(timer);
+      const latencyMs = Date.now() - startTime;
+      if (!res.ok) {
+        return {
+          ok: false,
+          provider: config.provider,
+          endpoint,
+          statusText: `Servidor retornou status HTTP ${res.status}: ${res.statusText}`,
+          models: [],
           latencyMs
         };
       }
+      const json = await res.json();
+      const models: string[] = isOllama
+        ? (Array.isArray(json.models) ? json.models.map((m: any) => m.name || m.model || '').filter(Boolean) : [])
+        : (Array.isArray(json.data) ? json.data.map((m: any) => m.id || '').filter(Boolean) : []);
+
+      return {
+        ok: true,
+        provider: config.provider,
+        endpoint,
+        statusText: models.length > 0
+          ? `${config.provider === 'custom-openai' ? 'LM Studio' : isOllama ? 'Ollama' : 'Servidor'} online (${models.length} modelos detectados)`
+          : 'Servidor online',
+        models,
+        latencyMs
+      };
     } catch (err: unknown) {
       clearTimeout(timer);
       const latencyMs = Date.now() - startTime;
@@ -233,7 +209,7 @@ export class CopilotAssistantService {
   }
 
   /**
-   * Streaming com Ollama API (/api/chat).
+   * Streaming com Ollama API (/api/chat) via proxy interno.
    */
   private async streamOllama(
     config: CopilotConfig,
@@ -243,19 +219,19 @@ export class CopilotAssistantService {
     callbacks: SuggestionCallbacks
   ): Promise<string> {
     const endpoint = normalizeEndpoint(config.endpoint, 'http://127.0.0.1:11434');
-    const url = `${endpoint}/api/chat`;
 
-    const response = await fetch(url, {
+    const response = await fetch('/api/copilot/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal,
       body: JSON.stringify({
+        provider: 'ollama',
+        endpoint,
         model: config.model || 'llama3.2',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
-        ],
-        stream: true
+        ]
       })
     });
 
@@ -300,7 +276,7 @@ export class CopilotAssistantService {
   }
 
   /**
-   * Streaming com OpenAI API (/v1/chat/completions).
+   * Streaming com OpenAI API (/v1/chat/completions) via proxy interno.
    */
   private async streamOpenAI(
     config: CopilotConfig,
@@ -311,26 +287,20 @@ export class CopilotAssistantService {
   ): Promise<string> {
     const defaultEp = config.provider === 'custom-openai' ? 'http://127.0.0.1:1234/v1' : 'https://api.openai.com/v1';
     const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
-    const url = `${endpoint}/chat/completions`;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (config.apiKey) {
-      headers['Authorization'] = `Bearer ${config.apiKey}`;
-    }
-
-    const response = await fetch(url, {
+    const response = await fetch('/api/copilot/chat', {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       signal,
       body: JSON.stringify({
-        model: config.model || 'gpt-4o-mini',
+        provider: config.provider,
+        endpoint,
+        model: config.model || (config.provider === 'custom-openai' ? 'qwen2.5-coder-14b-instruct' : 'gpt-4o-mini'),
+        apiKey: config.apiKey,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
-        ],
-        stream: true
+        ]
       })
     });
 
