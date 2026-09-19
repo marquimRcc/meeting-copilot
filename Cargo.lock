@@ -3642,6 +3642,7 @@ dependencies = [
  "nnnoiseless",
  "objc",
  "once_cell",
+ "openssl",
  "ort",
  "posthog-rs",
  "rand 0.8.6",
