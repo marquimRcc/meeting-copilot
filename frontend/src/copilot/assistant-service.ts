@@ -107,7 +107,7 @@ export class CopilotAssistantService {
     const timer = setTimeout(() => controller.abort(), 4000);
 
     try {
-      const res = await fetch('/api/copilot/models', {
+      const res = await fetch('/api/copilot/health', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
