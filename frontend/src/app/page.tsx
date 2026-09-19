@@ -209,6 +209,7 @@ export default function Home() {
 
   // Computed values using global status
   const isProcessingStop = status === RecordingStatus.PROCESSING_TRANSCRIPTS || isProcessing;
+  const [isTranscriptCollapsed, setIsTranscriptCollapsed] = useState(false);
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -229,6 +230,7 @@ export default function Home() {
         onLoadPreview={loadMeetingTranscripts}
       />
       <div className="flex flex-1 overflow-hidden">
+        {/* Painel de Transcrição: Lateral, compacto e colapsável */}
         <TranscriptPanel
           isProcessingStop={isProcessingStop}
           isStopping={isStopping}
@@ -237,44 +239,38 @@ export default function Home() {
           onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
           hasCopilotSuggestion={Boolean(copilot.currentQuestion || copilot.streamingAnswer)}
           isCopilotGenerating={copilot.isGenerating}
+          isCollapsed={isTranscriptCollapsed}
+          onToggleCollapse={() => setIsTranscriptCollapsed(prev => !prev)}
         />
 
+        {/* Palco Principal: Resposta da IA com prioridade total */}
         <CopilotPanel
           isOpen={isCopilotOpen}
           onClose={() => setIsCopilotOpen(false)}
           copilot={copilot}
         />
 
-        {/* Recording controls - only show when permissions are granted or already recording and not showing status messages */}
+        {/* Recording controls - Posicionado de forma limpa e sutil para não tapar o texto */}
         {(hasMicrophone || isRecording) &&
           status !== RecordingStatus.PROCESSING_TRANSCRIPTS &&
           status !== RecordingStatus.SAVING && (
-            <div className="fixed bottom-12 left-0 right-0 z-10">
-              <div
-                className="flex justify-center pl-8 transition-[margin] duration-300"
-                style={{
-                  marginLeft: sidebarCollapsed ? '4rem' : '16rem'
-                }}
-              >
-                <div className="w-2/3 max-w-[750px] flex justify-center">
-                  <div className="bg-white rounded-full shadow-lg flex items-center">
-                    <RecordingControls
-                      isRecording={recordingState.isRecording}
-                      onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
-                      onRecordingStart={handleRecordingStart}
-                      onTranscriptReceived={() => { }} // Not actually used by RecordingControls
-                      onStopInitiated={() => setIsStopping(true)}
-                      barHeights={barHeights}
-                      onTranscriptionError={(message) => {
-                        showModal('errorAlert', message);
-                      }}
-                      isRecordingDisabled={isRecordingDisabled}
-                      isParentProcessing={isProcessingStop}
-                      selectedDevices={selectedDevices}
-                      meetingName={meetingTitle}
-                    />
-                  </div>
-                </div>
+            <div className="fixed bottom-6 right-8 z-20 pointer-events-auto">
+              <div className="bg-white/95 backdrop-blur-md rounded-full shadow-lg border border-gray-200/80 px-2 py-1 flex items-center hover:shadow-xl transition-all">
+                <RecordingControls
+                  isRecording={recordingState.isRecording}
+                  onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
+                  onRecordingStart={handleRecordingStart}
+                  onTranscriptReceived={() => { }} // Not actually used by RecordingControls
+                  onStopInitiated={() => setIsStopping(true)}
+                  barHeights={barHeights}
+                  onTranscriptionError={(message) => {
+                    showModal('errorAlert', message);
+                  }}
+                  isRecordingDisabled={isRecordingDisabled}
+                  isParentProcessing={isProcessingStop}
+                  selectedDevices={selectedDevices}
+                  meetingName={meetingTitle}
+                />
               </div>
             </div>
           )}

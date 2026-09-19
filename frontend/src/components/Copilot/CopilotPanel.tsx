@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useMeetingCopilot } from '@/hooks/useMeetingCopilot';
 import { EvidenceCard } from './EvidenceCard';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   Sparkles,
   Copy,
@@ -15,7 +17,11 @@ import {
   Activity,
   Volume2,
   Mic,
-  Send
+  Send,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+  Maximize2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -72,6 +78,7 @@ const CopilotPanelContent: React.FC<{
 
   const [copied, setCopied] = useState(false);
   const [manualInput, setManualInput] = useState('');
+  const [showToolsDrawer, setShowToolsDrawer] = useState(false);
   const availableScopes = ['backend', 'arquitetura', 'incidentes', 'java', 'banco', 'todos'];
 
   if (!isOpen) return null;
@@ -80,7 +87,7 @@ const CopilotPanelContent: React.FC<{
     if (!streamingAnswer) return;
     navigator.clipboard.writeText(streamingAnswer);
     setCopied(true);
-    toast.success('Sugestão copiada para a área de transferência');
+    toast.success('Resposta copiada para a área de transferência');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -109,8 +116,8 @@ const CopilotPanelContent: React.FC<{
         overlay = new WebviewWindow('copilot-overlay', {
           url: '/copilot-overlay',
           title: 'Meeting Copilot Overlay',
-          width: 420,
-          height: 580,
+          width: 480,
+          height: 640,
           alwaysOnTop: true,
           decorations: false,
           transparent: true
@@ -121,25 +128,97 @@ const CopilotPanelContent: React.FC<{
         });
       }
     } catch {
-      window.open('/copilot-overlay', 'copilot-overlay', 'width=420,height=580,menubar=no,toolbar=no,location=no');
+      window.open('/copilot-overlay', 'copilot-overlay', 'width=480,height=640,menubar=no,toolbar=no,location=no');
     }
   };
 
   return (
-    <aside className="w-96 border-l border-gray-200 bg-white flex flex-col h-full shadow-lg z-20 transition-all">
-      {/* Cabeçalho */}
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-purple-50/30">
-        <div className="flex items-center space-x-2">
-          <div className="p-1.5 bg-indigo-600 rounded-lg text-white shadow-sm">
-            <Sparkles size={16} />
+    <main className="flex-1 flex flex-col h-full bg-slate-50/50 overflow-hidden relative">
+      {/* Topo Compacto: Status e Ações */}
+      <header className="px-6 py-2.5 bg-white border-b border-gray-200 flex items-center justify-between shadow-2xs z-10">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <div className="p-1 bg-indigo-600 rounded-md text-white shadow-xs">
+              <Sparkles size={15} />
+            </div>
+            <span className="text-xs font-bold text-gray-900 tracking-tight">RESPOSTA EM FOCO</span>
           </div>
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 leading-none">Meeting Copilot</h2>
-            <span className="text-[10px] text-gray-500 font-medium">Sugestões em tempo real</span>
+
+          <div className="h-4 w-px bg-gray-200" />
+
+          {/* Badges de Estado */}
+          <div className="flex items-center space-x-2 text-xs">
+            <button
+              onClick={() => setIsAutoTrigger(!isAutoTrigger)}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors flex items-center space-x-1 ${
+                isAutoTrigger
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              title="Detectar perguntas automaticamente na fala do fone"
+            >
+              <span>{isAutoTrigger ? '⚡ Detecção Automática' : '⏸ Detecção Pausada'}</span>
+            </button>
+
+            <button
+              onClick={() => toggleRemoteOnly()}
+              disabled={isRecording}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center space-x-1 ${
+                isRecording
+                  ? 'opacity-60 cursor-not-allowed bg-gray-100 text-gray-400 border border-gray-200'
+                  : isRemoteOnly
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              title={
+                isRecording
+                  ? 'Configuração travada durante a gravação ativa'
+                  : isRemoteOnly
+                    ? 'Capturando somente o áudio do fone/interlocutor (Microfone mudo)'
+                    : 'Modo Padrão: Grava microfone e áudio'
+              }
+            >
+              {isRemoteOnly ? (
+                <>
+                  <Volume2 size={12} className="text-indigo-600" />
+                  <span>Somente Fone</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={12} className="text-gray-500" />
+                  <span>Mic + Fone</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center space-x-1">
+        {/* Ações e Controles à Direita */}
+        <div className="flex items-center space-x-2">
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 px-3 shadow-xs font-medium"
+            onClick={() => triggerManual()}
+            disabled={isGenerating}
+            title="Disparar resposta sobre a última fala (Alt + Q)"
+          >
+            <Zap size={13} />
+            <span>Sugerir (Alt+Q)</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className={`h-7 text-xs px-2 gap-1 ${showToolsDrawer ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:text-gray-900'}`}
+            onClick={() => setShowToolsDrawer(prev => !prev)}
+            title="Abrir pergunta manual e escopos"
+          >
+            <SlidersHorizontal size={13} />
+            <span className="hidden sm:inline">Ajustes</span>
+            {showToolsDrawer ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </Button>
+
           <button
             onClick={openOverlayWindow}
             className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-md hover:bg-gray-100 transition-colors"
@@ -147,219 +226,159 @@ const CopilotPanelContent: React.FC<{
           >
             <ExternalLink size={15} />
           </button>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
-            title="Fechar Copiloto"
-          >
-            <X size={16} />
-          </button>
         </div>
-      </div>
+      </header>
 
-      {/* Barra de controle: Modo e Gatilho */}
-      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200/80 flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-1.5">
-          <button
-            onClick={() => setIsAutoTrigger(!isAutoTrigger)}
-            className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-              isAutoTrigger
-                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-            title="Detectar perguntas automaticamente na fala remota"
+      {/* Gaveta de Controles Secundários (Manual Input & Escopos) */}
+      {showToolsDrawer && (
+        <div className="px-6 py-3 bg-white border-b border-gray-200 space-y-3 animate-in fade-in duration-150">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (manualInput.trim()) {
+                triggerManual(manualInput.trim());
+                setManualInput('');
+              }
+            }}
+            className="flex items-center gap-2"
           >
-            {isAutoTrigger ? '⚡ Auto' : '⏸ Pausado'}
-          </button>
+            <input
+              type="text"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              placeholder="Digite ou cole uma pergunta específica da entrevista..."
+              className="flex-1 text-xs px-3 py-2 rounded-md border border-gray-200 focus:outline-none focus:border-indigo-500 text-gray-800 placeholder-gray-400 bg-slate-50/50"
+              disabled={isGenerating}
+            />
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3"
+              disabled={isGenerating || !manualInput.trim()}
+            >
+              <Send size={12} className="mr-1" />
+              <span>Enviar Pergunta</span>
+            </Button>
+          </form>
 
-          <button
-            onClick={() => toggleRemoteOnly()}
-            disabled={isRecording}
-            className={`px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center space-x-1 ${
-              isRecording
-                ? 'opacity-60 cursor-not-allowed bg-gray-100 text-gray-400 border border-gray-200'
-                : isRemoteOnly
-                  ? 'bg-indigo-100 text-indigo-800 border border-indigo-300 font-semibold'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-            title={
-              isRecording
-                ? 'Alteração desativada durante a gravação. Defina o microfone antes de iniciar a reunião.'
-                : isRemoteOnly
-                  ? 'Modo Somente Interlocutor ativo: Microfone desativado, captura apenas a saída da chamada'
-                  : 'Modo Padrão: Grava microfone local e áudio da chamada'
-            }
-          >
-            {isRemoteOnly ? (
-              <>
-                <Volume2 size={11} className="text-indigo-600" />
-                <span>Chamada</span>
-              </>
-            ) : (
-              <>
-                <Mic size={11} className="text-gray-500" />
-                <span>Mic+Chamada</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center space-x-2 text-xs text-gray-500">
+            <Tag size={12} className="shrink-0" />
+            <span className="font-medium text-[11px]">Tags ativas:</span>
+            <div className="flex flex-wrap gap-1">
+              {availableScopes.map(scope => {
+                const active = scopes.includes(scope) || (scope === 'todos' && scopes.includes('todos'));
+                return (
+                  <button
+                    key={scope}
+                    onClick={() => toggleScope(scope)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${
+                      active
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {scope}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
+      )}
 
-        <Button
-          size="sm"
-          variant="default"
-          className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1 px-2.5 shadow-sm"
-          onClick={() => triggerManual()}
-          disabled={isGenerating}
-        >
-          <Zap size={13} />
-          <span>Sugerir (Alt+Q)</span>
-        </Button>
-      </div>
-
-      {/* Pergunta manual direta (ideal para entrevistas ou testes de áudio) */}
-      <div className="px-4 py-2 bg-white border-b border-gray-100">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (manualInput.trim()) {
-              triggerManual(manualInput.trim());
-              setManualInput('');
-            }
-          }}
-          className="flex items-center gap-1.5"
-        >
-          <input
-            type="text"
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-            placeholder="Cole ou digite a pergunta da entrevista..."
-            className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 focus:outline-none focus:border-indigo-500 text-gray-800 placeholder-gray-400"
-            disabled={isGenerating}
-          />
-          <Button
-            type="submit"
-            size="sm"
-            className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2.5"
-            disabled={isGenerating || !manualInput.trim()}
-            title="Enviar pergunta para o Copiloto"
-          >
-            <Send size={12} />
-          </Button>
-        </form>
-      </div>
-
-      {/* Seletor de Escopos */}
-      <div className="px-4 py-2 border-b border-gray-100 bg-white">
-        <div className="flex items-center space-x-1 text-[11px] text-gray-500 mb-1.5">
-          <Tag size={12} />
-          <span>Escopos de contexto ativos:</span>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {availableScopes.map(scope => {
-            const active = scopes.includes(scope) || (scope === 'todos' && scopes.includes('todos'));
-            return (
-              <button
-                key={scope}
-                onClick={() => toggleScope(scope)}
-                className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${
-                  active
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {scope}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Conteúdo Principal */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Erro */}
+      {/* ÁREA NOBRE: Teleprompter da Resposta */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 max-w-5xl w-full mx-auto pb-28">
+        {/* Alerta de Erro de Conexão */}
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex flex-col space-y-2 text-xs text-red-700">
-            <div className="flex items-start space-x-2">
-              <AlertCircle size={15} className="shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Falha na chamada do modelo</p>
-                <p className="text-[11px] text-red-600 mt-0.5">{error}</p>
+          <div className="p-3.5 bg-red-50/90 border border-red-200 rounded-xl flex flex-col space-y-2 text-xs text-red-700">
+            <div className="flex items-start space-x-2.5">
+              <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-500" />
+              <div className="flex-1">
+                <p className="font-semibold text-red-800">Falha na chamada do modelo de IA</p>
+                <p className="text-xs text-red-600 mt-0.5">{error}</p>
               </div>
             </div>
             <button
               onClick={() => checkConnection()}
               disabled={isCheckingHealth}
-              className="self-start text-[11px] font-medium text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded flex items-center space-x-1.5 transition-colors"
+              className="self-start text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 px-2.5 py-1 rounded-md flex items-center space-x-1.5 transition-colors"
             >
-              <Activity size={12} className={isCheckingHealth ? "animate-spin text-red-600" : ""} />
-              <span>{isCheckingHealth ? "Testando conexão..." : "Testar Servidor LM Studio / Ollama"}</span>
+              <Activity size={13} className={isCheckingHealth ? "animate-spin text-red-600" : ""} />
+              <span>{isCheckingHealth ? "Testando conexão..." : "Testar Servidor LM Studio"}</span>
             </button>
           </div>
         )}
 
-        {/* Pergunta Atual */}
+        {/* Pergunta em Foco (Banner Elegante e Sutil) */}
         {currentQuestion && (
-          <div className="p-3 bg-white border border-indigo-100 rounded-xl shadow-xs space-y-1.5 transition-all">
-            <div className="flex items-center justify-between text-[11px] text-gray-400">
-              <span className="font-semibold uppercase tracking-wider text-indigo-600">Pergunta em Foco</span>
-              <div className="flex items-center space-x-1.5">
-                <span className="capitalize">{currentQuestion.reason}</span>
-                <button
-                  onClick={dismissQuestion}
-                  className="text-gray-400 hover:text-red-500 p-0.5 rounded transition-colors"
-                  title="Dispensar esta pergunta"
-                >
-                  <X size={13} />
-                </button>
+          <div className="bg-white border-l-4 border-indigo-600 rounded-r-xl p-3.5 shadow-xs flex items-center justify-between gap-3 border-y border-r border-gray-200/70">
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center space-x-2 text-[10px] uppercase font-bold tracking-wider text-indigo-600">
+                <span>Pergunta Detectada</span>
+                <span className="text-gray-300">•</span>
+                <span className="text-gray-400 lowercase font-normal">{currentQuestion.reason}</span>
               </div>
+              <p className="text-sm md:text-base font-semibold text-gray-900 leading-snug truncate md:whitespace-normal">
+                "{currentQuestion.text}"
+              </p>
             </div>
-            <p className="text-sm font-medium text-gray-900 leading-snug">
-              "{currentQuestion.text}"
-            </p>
+            <button
+              onClick={dismissQuestion}
+              className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-100 transition-colors shrink-0"
+              title="Dispensar esta pergunta"
+            >
+              <X size={15} />
+            </button>
           </div>
         )}
 
-        {/* Sugestão da IA (Streaming) */}
+        {/* Resposta Principal Formatada (Teleprompter) */}
         {(streamingAnswer || isGenerating) && (
-          <div className="p-3.5 bg-gradient-to-b from-indigo-50/70 to-white border border-indigo-200/80 rounded-xl shadow-sm space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-1.5 text-xs font-semibold text-indigo-900">
-                <Sparkles size={14} className="text-indigo-600" />
-                <span>Sugestão Recomendada</span>
+          <article className="bg-white border border-gray-200/90 rounded-2xl shadow-sm p-6 space-y-4 transition-all">
+            {/* Barra de Ações Rápidas da Resposta */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center space-x-2">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">
+                  <Sparkles size={13} className="mr-1 text-indigo-600" />
+                  Sugestão Direta
+                </span>
                 {isGenerating && (
-                  <span className="inline-block w-2 h-2 rounded-full bg-indigo-600 animate-ping ml-1" />
+                  <span className="flex items-center text-xs font-semibold text-amber-600 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block mr-1.5 animate-ping" />
+                    Gerando resposta...
+                  </span>
                 )}
               </div>
 
-              <div className="flex items-center space-x-1">
+              <div className="flex items-center space-x-1.5">
                 {isGenerating ? (
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 px-2"
+                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5"
                     onClick={cancelGeneration}
                   >
-                    Parar
+                    Interromper
                   </Button>
                 ) : (
                   <>
                     <Button
                       size="sm"
-                      variant="ghost"
-                      className="h-6 text-[11px] text-gray-600 hover:text-indigo-600 px-1.5 gap-1"
+                      variant="outline"
+                      className="h-7 text-xs text-gray-600 hover:text-indigo-600 px-2.5 gap-1.5"
                       onClick={regenerateAnswer}
-                      title="Regerar sugestão para a pergunta em foco"
+                      title="Regerar resposta para esta pergunta"
                     >
-                      <RotateCcw size={11} />
-                      <span className="hidden sm:inline">Regerar</span>
+                      <RotateCcw size={12} />
+                      <span>Regerar</span>
                     </Button>
                     <Button
                       size="sm"
-                      variant="ghost"
-                      className="h-6 text-[11px] text-gray-600 hover:text-gray-900 px-2 gap-1"
+                      variant="outline"
+                      className="h-7 text-xs text-gray-700 hover:text-gray-900 px-3 gap-1.5 font-medium"
                       onClick={handleCopy}
                     >
-                      {copied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                      {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
                       <span>{copied ? 'Copiado' : 'Copiar'}</span>
                     </Button>
                   </>
@@ -367,26 +386,51 @@ const CopilotPanelContent: React.FC<{
               </div>
             </div>
 
-            <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap font-sans">
-              {streamingAnswer}
+            {/* Texto Renderizado em Markdown com Tipografia de Alta Legibilidade */}
+            <div className="prose prose-slate max-w-none text-slate-900 text-sm md:text-base leading-relaxed tracking-normal font-sans">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  h1: ({ node, ...props }) => <h1 className="text-lg font-bold text-gray-900 mt-3 mb-1" {...props} />,
+                  h2: ({ node, ...props }) => <h2 className="text-base font-bold text-gray-800 mt-2.5 mb-1" {...props} />,
+                  h3: ({ node, ...props }) => <h3 className="text-sm font-bold text-gray-800 mt-2 mb-1" {...props} />,
+                  p: ({ node, ...props }) => <p className="mb-2 leading-relaxed text-gray-800 font-normal" {...props} />,
+                  ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-2 space-y-1 text-gray-800 font-normal" {...props} />,
+                  ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-2 space-y-1 text-gray-800 font-normal" {...props} />,
+                  li: ({ node, ...props }) => <li className="leading-snug" {...props} />,
+                  strong: ({ node, ...props }) => <strong className="font-semibold text-indigo-950" {...props} />,
+                  code: ({ inline, className, children, ...props }: any) => {
+                    return inline ? (
+                      <code className="bg-slate-100 text-indigo-800 font-mono text-xs px-1.5 py-0.5 rounded border border-slate-200" {...props}>
+                        {children}
+                      </code>
+                    ) : (
+                      <pre className="bg-slate-900 text-slate-100 rounded-lg p-3.5 my-2 text-xs font-mono overflow-x-auto">
+                        <code {...props}>{children}</code>
+                      </pre>
+                    );
+                  }
+                }}
+              >
+                {streamingAnswer}
+              </ReactMarkdown>
+
               {isGenerating && (
-                <span className="inline-block w-1.5 h-3.5 bg-indigo-600 ml-0.5 animate-pulse align-middle" />
+                <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse align-middle" />
               )}
             </div>
-          </div>
+          </article>
         )}
 
-        {/* Evidências do Contexto (BM25) */}
+        {/* Fatos e Contextos Utilizados (Discreto no rodapé da resposta) */}
         {evidence.length > 0 && (
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between text-[11px] text-gray-500 font-medium">
-              <div className="flex items-center space-x-1">
-                <Layers size={12} />
-                <span>Fatos e Contexto Utilizados ({evidence.length})</span>
-              </div>
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center space-x-1.5 text-xs text-gray-500 font-medium">
+              <Layers size={13} />
+              <span>Contextos e Documentos Referenciados ({evidence.length})</span>
             </div>
 
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {evidence.map((item, idx) => (
                 <EvidenceCard key={`${item.documentId}-${item.paragraph}-${idx}`} evidence={item} />
               ))}
@@ -396,23 +440,23 @@ const CopilotPanelContent: React.FC<{
 
         {/* Estado Vazio Inicial */}
         {!currentQuestion && !streamingAnswer && !isGenerating && (
-          <div className="text-center py-10 px-4 space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto text-indigo-600 shadow-inner">
-              <Sparkles size={22} />
+          <div className="text-center py-20 px-4 space-y-3 bg-white/60 border border-dashed border-gray-200 rounded-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto text-indigo-600 shadow-inner">
+              <Sparkles size={26} />
             </div>
-            <div>
-              <h3 className="text-xs font-semibold text-gray-800">Copiloto Pronto</h3>
-              <p className="text-[11px] text-gray-500 mt-1 leading-normal">
-                Pressione <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-[10px] font-mono">Alt + Q</kbd> a qualquer momento durante a reunião para sugerir uma resposta sobre a última fala, ou ative a detecção automática acima.
+            <div className="max-w-md mx-auto">
+              <h3 className="text-sm font-bold text-gray-900">Aguardando Pergunta da Call</h3>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                Assim que o entrevistador fizer uma pergunta no fone, a resposta aparecerá aqui em tempo real formatada para leitura imediata. Você também pode disparar manualmente pressionando <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-[11px] font-mono">Alt + Q</kbd>.
               </p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Rodapé com Indicador de Modelo e Limpar */}
-      <div className="p-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between text-[11px] text-gray-500">
-        <div className="flex items-center space-x-1.5 truncate max-w-[220px]" title={health?.statusText || `Modelo: ${activeModel} (${activeProvider})`}>
+      {/* Barra Inferior Fixa com Detalhes do Modelo e Limpar */}
+      <footer className="px-6 py-2.5 border-t border-gray-200 bg-white flex items-center justify-between text-xs text-gray-500 z-10">
+        <div className="flex items-center space-x-2" title={health?.statusText || `Modelo: ${activeModel} (${activeProvider})`}>
           <span
             className={`w-2 h-2 rounded-full shrink-0 ${
               isCheckingHealth
@@ -422,30 +466,37 @@ const CopilotPanelContent: React.FC<{
                   : 'bg-emerald-500'
             }`}
           />
-          <span className="truncate font-medium text-gray-700">{activeModel}</span>
+          <span className="font-semibold text-gray-800">{activeModel}</span>
+          <span className="text-gray-400 text-[11px]">via {activeProvider}</span>
           {health?.latencyMs !== undefined && health.ok && (
-            <span className="text-[10px] text-gray-400 shrink-0">({health.latencyMs}ms)</span>
+            <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded font-mono">
+              {health.latencyMs}ms
+            </span>
           )}
         </div>
-        <div className="flex items-center space-x-1">
+
+        <div className="flex items-center space-x-3">
           <button
             onClick={() => checkConnection()}
             disabled={isCheckingHealth}
-            className="hover:text-indigo-600 p-1 rounded hover:bg-gray-100 transition-colors"
-            title="Verificar conectividade com LM Studio / Ollama"
+            className="hover:text-indigo-600 p-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1 text-[11px]"
+            title="Testar Conexão com LM Studio"
           >
             <Activity size={12} className={isCheckingHealth ? "animate-spin text-amber-500" : ""} />
+            <span>Verificar LM Studio</span>
           </button>
+
           <button
             onClick={clearState}
-            className="hover:text-gray-800 flex items-center space-x-1 p-1 rounded hover:bg-gray-100"
-            title="Limpar sugestões e histórico do copiloto"
+            className="hover:text-gray-800 flex items-center space-x-1 p-1 rounded hover:bg-gray-100 text-[11px]"
+            title="Limpar resposta atual e histórico da tela"
           >
             <RotateCcw size={12} />
-            <span>Limpar</span>
+            <span>Limpar Tela</span>
           </button>
         </div>
-      </div>
-    </aside>
+      </footer>
+    </main>
   );
 };
+

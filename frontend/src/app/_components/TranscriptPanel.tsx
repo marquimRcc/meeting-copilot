@@ -27,16 +27,20 @@ interface TranscriptPanelProps {
   onToggleCopilot?: () => void;
   hasCopilotSuggestion?: boolean;
   isCopilotGenerating?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export function TranscriptPanel({
   isProcessingStop,
   isStopping,
   showModal,
-  isCopilotOpen = false,
+  isCopilotOpen = true,
   onToggleCopilot,
   hasCopilotSuggestion = false,
   isCopilotGenerating = false,
+  isCollapsed = false,
+  onToggleCollapse,
 }: TranscriptPanelProps) {
   // Contexts
   const { transcripts, transcriptContainerRef, copyTranscript } = useTranscripts();
@@ -59,10 +63,52 @@ export function TranscriptPanel({
     [transcripts]
   );
 
+  if (isCollapsed) {
+    return (
+      <div className="w-12 border-r border-gray-200 bg-gray-50/80 flex flex-col items-center py-4 justify-between select-none shrink-0 transition-all duration-200">
+        <button
+          onClick={onToggleCollapse}
+          className="p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 shadow-xs transition-colors"
+          title="Expandir Transcrição de Áudio"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </button>
+        <div className="writing-vertical text-xs font-semibold text-gray-400 tracking-wider flex items-center gap-2 rotate-180" style={{ writingMode: 'vertical-rl' }}>
+          <span>TRANSCRIÇÃO ({transcripts.length})</span>
+        </div>
+        <div />
+      </div>
+    );
+  }
+
   return (
-    <div ref={transcriptContainerRef} className="w-full border-r border-gray-200 bg-white flex flex-col overflow-y-auto">
+    <div
+      ref={transcriptContainerRef}
+      className="w-80 lg:w-96 border-r border-gray-200 bg-white flex flex-col overflow-y-auto shrink-0 transition-all duration-200"
+    >
       {/* Title area - Sticky header */}
-      <div className="sticky top-0 z-10 bg-white p-4 border-gray-200">
+      <div className="sticky top-0 z-10 bg-white p-3.5 border-b border-gray-100">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-700">Áudio da Call</span>
+            <span className="text-[11px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+              {transcripts.length}
+            </span>
+          </div>
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Recolher transcrição (Modo 100% Foco na Resposta)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+        </div>
         <div className="flex flex-col space-y-3">
           <div className="flex  flex-col space-y-2">
             <div className="flex justify-center  items-center space-x-2">
