@@ -1,6 +1,21 @@
 import type { CopilotConfig, SuggestionRequest } from './types.ts';
-import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+
+/**
+ * Carrega a API Tauri de forma dinâmica apenas quando executando dentro do runtime Tauri webview.
+ * Em Node.js (testes unitários/CI) ou SSR, evita dependência estática de @tauri-apps/api.
+ */
+async function getTauri() {
+  if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+    try {
+      const core = await import('@tauri-apps/api/core');
+      const event = await import('@tauri-apps/api/event');
+      return { invoke: core.invoke, listen: event.listen };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 export interface SuggestionCallbacks {
   onToken?: (token: string, accumulated: string) => void;
@@ -96,22 +111,114 @@ export class CopilotAssistantService {
 
     const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
 
+    const tauri = await getTauri();
+    if (tauri) {
+      try {
+        const res = await tauri.invoke<HealthCheckResult>('api_copilot_check_health', {
+          endpoint,
+          provider: config.provider,
+          apiKey: config.apiKey || null
+        });
+        return res;
+      } catch (err: unknown) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          provider: config.provider,
+          endpoint,
+          statusText: `Erro ao conectar: ${rawMsg}`,
+          models: [],
+          latencyMs: 0
+        };
+      }
+    }
+
+    // Fallback HTTP (Node.js / CI / browser sem Tauri)
+    const startTime = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
     try {
-      const res = await invoke<HealthCheckResult>('api_copilot_check_health', {
-        endpoint,
-        provider: config.provider,
-        apiKey: config.apiKey || null
-      });
-      return res;
+      if (isOllama) {
+        const url = `${endpoint}/api/tags`;
+        const res = await fetch(url, { method: 'GET', signal: controller.signal });
+        clearTimeout(timer);
+        const latencyMs = Date.now() - startTime;
+        if (!res.ok) {
+          return {
+            ok: false,
+            provider: 'ollama',
+            endpoint,
+            statusText: `Ollama offline em ${endpoint}. HTTP ${res.status}`,
+            models: [],
+            latencyMs
+          };
+        }
+        const json = (await res.json()) as any;
+        const models: string[] = Array.isArray(json.models)
+          ? json.models.map((m: any) => m.name || m.model || '').filter(Boolean)
+          : [];
+        return {
+          ok: true,
+          provider: 'ollama',
+          endpoint,
+          statusText: models.length > 0 ? `Ollama online (${models.length} modelos disponíveis)` : 'Ollama online (nenhum modelo baixado)',
+          models,
+          latencyMs
+        };
+      } else {
+        const url = `${endpoint}/models`;
+        const headers: Record<string, string> = {};
+        if (config.apiKey) {
+          headers['Authorization'] = `Bearer ${config.apiKey}`;
+        }
+        const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+        clearTimeout(timer);
+        const latencyMs = Date.now() - startTime;
+        if (!res.ok) {
+          return {
+            ok: false,
+            provider: config.provider,
+            endpoint,
+            statusText: `Servidor retornou status HTTP ${res.status}`,
+            models: [],
+            latencyMs
+          };
+        }
+        const json = (await res.json()) as any;
+        const models: string[] = Array.isArray(json.data)
+          ? json.data.map((m: any) => m.id || '').filter(Boolean)
+          : [];
+        return {
+          ok: true,
+          provider: config.provider,
+          endpoint,
+          statusText: models.length > 0
+            ? `${config.provider === 'custom-openai' ? 'LM Studio' : 'Servidor'} online (${models.length} modelos detectados)`
+            : 'Servidor online',
+          models,
+          latencyMs
+        };
+      }
     } catch (err: unknown) {
+      clearTimeout(timer);
+      const latencyMs = Date.now() - startTime;
       const rawMsg = err instanceof Error ? err.message : String(err);
+      let statusText = `Servidor inacessível em ${endpoint}`;
+      if (controller.signal.aborted) {
+        statusText = `Tempo limite esgotado ao conectar em ${endpoint} (4s)`;
+      } else if (rawMsg.includes('Failed to fetch') || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('fetch failed')) {
+        statusText = isOllama
+          ? `Ollama offline em ${endpoint}. Inicie com 'ollama serve'`
+          : `LM Studio offline em ${endpoint}. Inicie o servidor local na porta 1234`;
+      }
       return {
         ok: false,
         provider: config.provider,
         endpoint,
-        statusText: `Erro ao conectar: ${rawMsg}`,
+        statusText,
         models: [],
-        latencyMs: 0
+        latencyMs
       };
     }
   }
@@ -128,52 +235,165 @@ export class CopilotAssistantService {
     const endpoint = normalizeEndpoint(config.endpoint, defaultEp);
     const model = config.model || (config.provider === 'custom-openai' ? 'qwen2.5-coder-14b-instruct' : 'gpt-4o-mini');
 
-    let unlistenToken: UnlistenFn | null = null;
-    let unlistenDone: UnlistenFn | null = null;
-    let cancelled = false;
+    const tauri = await getTauri();
+    if (tauri) {
+      let unlistenToken: (() => void) | null = null;
+      let unlistenDone: (() => void) | null = null;
+      let cancelled = false;
 
+      this.activeCancelFn = () => {
+        cancelled = true;
+        if (unlistenToken) unlistenToken();
+        if (unlistenDone) unlistenDone();
+      };
+
+      try {
+        unlistenToken = await tauri.listen<{ token: string; accumulated: string }>('copilot-token', (event: any) => {
+          if (!cancelled && event.payload) {
+            callbacks.onToken?.(event.payload.token, event.payload.accumulated);
+          }
+        });
+
+        unlistenDone = await tauri.listen<{ full_text: string }>('copilot-done', (event: any) => {
+          if (!cancelled && event.payload) {
+            callbacks.onComplete?.(event.payload.full_text);
+          }
+        });
+
+        const fullText = await tauri.invoke<string>('api_copilot_stream_chat', {
+          endpoint,
+          model,
+          systemPrompt: system,
+          userPrompt: user,
+          apiKey: config.apiKey || null,
+          provider: config.provider
+        });
+
+        if (!cancelled) {
+          callbacks.onComplete?.(fullText);
+        }
+        return fullText;
+      } catch (err: unknown) {
+        if (cancelled) return '';
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const error = new Error(rawMsg);
+        callbacks.onError?.(error);
+        throw error;
+      } finally {
+        if (unlistenToken) unlistenToken();
+        if (unlistenDone) unlistenDone();
+        if (this.activeCancelFn) this.activeCancelFn = null;
+      }
+    }
+
+    // Fallback HTTP streaming (Node.js / CI / browser sem Tauri)
+    const controller = new AbortController();
+    let isCancelled = false;
     this.activeCancelFn = () => {
-      cancelled = true;
-      if (unlistenToken) unlistenToken();
-      if (unlistenDone) unlistenDone();
+      isCancelled = true;
+      controller.abort();
     };
 
     try {
-      unlistenToken = await listen<{ token: string; accumulated: string }>('copilot-token', (event) => {
-        if (!cancelled && event.payload) {
-          callbacks.onToken?.(event.payload.token, event.payload.accumulated);
-        }
-      });
-
-      unlistenDone = await listen<{ full_text: string }>('copilot-done', (event) => {
-        if (!cancelled && event.payload) {
-          callbacks.onComplete?.(event.payload.full_text);
-        }
-      });
-
-      const fullText = await invoke<string>('api_copilot_stream_chat', {
-        endpoint,
-        model,
-        systemPrompt: system,
-        userPrompt: user,
-        apiKey: config.apiKey || null,
-        provider: config.provider
-      });
-
-      if (!cancelled) {
-        callbacks.onComplete?.(fullText);
+      const isOllama = config.provider === 'ollama';
+      const url = isOllama ? `${endpoint}/api/chat` : `${endpoint}/chat/completions`;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (config.apiKey) {
+        headers['Authorization'] = `Bearer ${config.apiKey}`;
       }
-      return fullText;
+
+      const body = isOllama
+        ? JSON.stringify({
+            model: config.model || 'llama3.2',
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user }
+            ],
+            stream: true
+          })
+        : JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user }
+            ],
+            stream: true
+          });
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na chamada ${config.provider} (${response.status}): ${response.statusText}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Corpo de resposta vazio retornado pela API.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let accumulated = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (isOllama) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              const token = parsed.message?.content || '';
+              if (token) {
+                accumulated += token;
+                callbacks.onToken?.(token, accumulated);
+              }
+            } catch {}
+          } else {
+            if (trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') break;
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                const token = data.choices?.[0]?.delta?.content || '';
+                if (token) {
+                  accumulated += token;
+                  callbacks.onToken?.(token, accumulated);
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+
+      callbacks.onComplete?.(accumulated);
+      return accumulated;
     } catch (err: unknown) {
-      if (cancelled) return '';
+      if (isCancelled || controller.signal.aborted) {
+        return '';
+      }
       const rawMsg = err instanceof Error ? err.message : String(err);
-      const error = new Error(rawMsg);
+      let friendlyMsg = rawMsg;
+      if (rawMsg.includes('Failed to fetch') || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('fetch failed')) {
+        const ep = config.endpoint || (config.provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234/v1');
+        friendlyMsg = `Não foi possível conectar ao servidor de IA em ${ep}. Certifique-se de que o servidor local (LM Studio na porta 1234 ou Ollama na porta 11434) está ativo, ou configure sua API nas configurações do Meetily.`;
+      }
+      const error = new Error(friendlyMsg);
       callbacks.onError?.(error);
       throw error;
     } finally {
-      if (unlistenToken) unlistenToken();
-      if (unlistenDone) unlistenDone();
-      if (this.activeCancelFn) this.activeCancelFn = null;
+      this.activeCancelFn = null;
     }
   }
 }
