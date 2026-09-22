@@ -53,7 +53,7 @@ if (typeof window !== 'undefined') {
             return 'linux';
           case 'plugin:app|version':
           case 'get_app_version':
-            return '0.4.1';
+            return '1.0.1';
           case 'plugin:app|name':
             return 'meetily';
           case 'whisper_init':

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import Image from 'next/image';
-import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch";
 import { UpdateDialog } from "./UpdateDialog";
 import { updateService, UpdateInfo } from '@/services/updateService';
 import { Button } from './ui/button';
@@ -11,7 +10,7 @@ import { toast } from 'sonner';
 
 
 export function About() {
-    const [currentVersion, setCurrentVersion] = useState<string>('0.4.1');
+    const [currentVersion, setCurrentVersion] = useState<string>('1.0.1');
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
     const [isChecking, setIsChecking] = useState(false);
     const [showUpdateDialog, setShowUpdateDialog] = useState(false);
@@ -116,35 +115,6 @@ export function About() {
                 </div>
             </div>
 
-            {/* Coming Soon - Compact */}
-            <div className="bg-blue-50 rounded p-3">
-                <p className="text-s text-blue-800">
-                    <span className="font-bold">Em breve:</span> Uma biblioteca de agentes de IA locais para automatizar follow-ups, tarefas e muito mais.
-                </p>
-            </div>
-
-            {/* CTA Section - Compact */}
-            <div className="text-center space-y-2">
-                <h3 className="text-medium font-semibold text-gray-800">Pronto para levar seu negócio mais longe?</h3>
-                <p className="text-s text-gray-600">
-                    Se você planeja criar agentes de IA personalizados com foco em privacidade para a sua <span className="font-bold">empresa</span>, nós podemos ajudar.
-                </p>
-                <button
-                    onClick={handleContactClick}
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors duration-200 shadow-sm hover:shadow-md"
-                >
-                    Falar com a equipe Zackriya
-                </button>
-            </div>
-
-            {/* Footer - Compact */}
-            <div className="pt-2 border-t border-gray-200 text-center">
-                <p className="text-xs text-gray-400">
-                    Desenvolvido por Zackriya Solutions
-                </p>
-            </div>
-            <AnalyticsConsentSwitch />
-
             {/* Update Dialog */}
             <UpdateDialog
                 open={showUpdateDialog}
@@ -152,6 +122,5 @@ export function About() {
                 updateInfo={updateInfo}
             />
         </div>
-
     )
 }

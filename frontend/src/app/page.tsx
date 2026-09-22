@@ -127,16 +127,10 @@ export default function Home() {
     performStartupChecks();
   }, [checkForRecoverableTranscripts, recordingState.isRecording, status]);
 
-  // Watch for recoverable meetings changes and show dialog once per session
+  // Auto popup de recuperação na inicialização desativado para manter a tela limpa
+  // O usuário pode acessar as gravações e recuperação quando desejar sem popup intrusivo
   useEffect(() => {
-    // Only show dialog if we have meetings and haven't shown it yet this session
-    if (recoverableMeetings.length > 0) {
-      const shownThisSession = sessionStorage.getItem('recovery_dialog_shown');
-      if (!shownThisSession) {
-        setShowRecoveryDialog(true);
-        sessionStorage.setItem('recovery_dialog_shown', 'true');
-      }
-    }
+    // Apenas carrega a lista para estar disponível se acionado manualmente, sem abrir modal sozinho
   }, [recoverableMeetings]);
 
   // Handle recovery with toast notifications and navigation

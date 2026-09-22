@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -665,13 +665,14 @@ const Sidebar: React.FC = () => {
       {/* Floating collapse button */}
       <button
         onClick={toggleCollapse}
-        className="absolute -right-6 top-20 z-50 p-1 bg-white hover:bg-gray-100 rounded-full shadow-lg border"
-        style={{ transform: 'translateX(50%)' }}
+        className="absolute -right-3.5 top-16 z-50 p-1 bg-white hover:bg-gray-100 rounded-full shadow-md border border-gray-200 transition-all duration-200"
+        title={isCollapsed ? "Expandir menu lateral" : "Recolher para modo ícones"}
+        aria-label={isCollapsed ? "Expandir menu lateral" : "Recolher para modo ícones"}
       >
         {isCollapsed ? (
-          <ChevronRightCircle className="w-6 h-6" />
+          <ChevronRightCircle className="w-5 h-5 text-gray-600" />
         ) : (
-          <ChevronLeftCircle className="w-6 h-6" />
+          <ChevronLeftCircle className="w-5 h-5 text-gray-600" />
         )}
       </button>
 
@@ -680,19 +681,33 @@ const Sidebar: React.FC = () => {
           }`}
       >
         {/*  Header with traffic light spacing */}
-        <div className="flex-shrink-0 h-22 flex items-center">
-
+        <div className="flex-shrink-0 flex items-center">
           {/* Title container */}
-
-
-
           <div className="flex-1">
             {!isCollapsed && (
-              <div className="p-3">
-                {/* <span className="text-lg text-center border rounded-full bg-blue-50 border-white font-semibold text-gray-700 mb-2 block items-center">
-                  <span>Meetily</span>
-                </span> */}
-                <Logo isCollapsed={isCollapsed} />
+              <div className="p-3 pb-1">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex-1 mr-2">
+                    <Logo isCollapsed={isCollapsed} />
+                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={toggleCollapse}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200"
+                          title="Recolher menu para ícones"
+                          aria-label="Recolher menu para ícones"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p>Recolher para modo ícones</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
 
                 <div className="relative mb-1">
                   <InputGroup >
@@ -742,13 +757,29 @@ const Sidebar: React.FC = () => {
                 {filteredSidebarItems.filter(item => item.type === 'folder').map(item => (
                   <div key={item.id}>
                     <div
-                      className="flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg"
+                      className="flex items-center justify-between transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg hover:bg-gray-100 cursor-pointer select-none group"
+                      onClick={toggleCollapse}
+                      title="Recolher para modo somente ícones"
                     >
-                      <NotebookPen className="w-4 h-4 mr-2 text-gray-600" />
-                      <span className="text-gray-700">{item.title}</span>
-                      {searchQuery && item.id === 'meetings' && isSearching && (
-                        <span className="ml-2 text-xs text-blue-500 animate-pulse">Pesquisando...</span>
-                      )}
+                      <div className="flex items-center">
+                        <NotebookPen className="w-4 h-4 mr-2 text-gray-600 group-hover:text-blue-600" />
+                        <span className="text-gray-700 group-hover:text-blue-600">{item.title}</span>
+                        {searchQuery && item.id === 'meetings' && isSearching && (
+                          <span className="ml-2 text-xs text-blue-500 animate-pulse">Pesquisando...</span>
+                        )}
+                      </div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="p-1 text-gray-400 group-hover:text-blue-600 rounded transition-colors">
+                              <ChevronLeft className="w-4 h-4" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <p>Recolher para ícones</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </div>
                 ))}
@@ -810,8 +841,16 @@ const Sidebar: React.FC = () => {
               <span>Configurações</span>
             </button>
             <Info isCollapsed={isCollapsed} />
+            <button
+              onClick={toggleCollapse}
+              className="w-full flex items-center justify-center px-3 py-1.5 mt-1 text-xs font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors border border-dashed border-gray-200"
+              title="Voltar ao modo somente ícones"
+            >
+              <ChevronLeftCircle className="w-3.5 h-3.5 mr-1 text-gray-400" />
+              <span>Modo somente ícones</span>
+            </button>
             <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
-              v0.4.1
+              v1.0.1
             </div>
           </div>
         )}

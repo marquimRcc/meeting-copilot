@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { ArrowLeft, Settings2, Mic, Database as DatabaseIcon, SparkleIcon, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Settings2, Mic, Volume2, Database as DatabaseIcon, SparkleIcon, FlaskConical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
 import { TranscriptSettings } from '@/components/TranscriptSettings';
 import { RecordingSettings } from '@/components/RecordingSettings';
 import { PreferenceSettings } from '@/components/PreferenceSettings';
+import { AudioSettingsTab } from '@/components/AudioSettingsTab';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { BetaSettings } from '@/components/BetaSettings';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -16,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 // Tabs configuration (constant)
 const TABS = [
   { value: 'general', label: 'Geral', icon: Settings2 },
+  { value: 'audio', label: 'Áudio e Fones', icon: Volume2 },
   { value: 'recording', label: 'Gravações', icon: Mic },
   { value: 'Transcriptionmodels', label: 'Transcrição', icon: DatabaseIcon },
   { value: 'summaryModels', label: 'Resumo', icon: SparkleIcon },
@@ -111,6 +113,9 @@ export default function SettingsPage() {
 
             <TabsContent value="general">
               <PreferenceSettings />
+            </TabsContent>
+            <TabsContent value="audio">
+              <AudioSettingsTab />
             </TabsContent>
             <TabsContent value="recording">
               <RecordingSettings />
