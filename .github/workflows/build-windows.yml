@@ -13,9 +13,9 @@ on:
         default: release
       sign-build:
         description: 'Sign the build'
-        required: true
+        required: false
         type: boolean
-        default: true
+        default: false
       test-signing:
         description: 'Run pre-build signing test (optional)'
         required: false
@@ -480,7 +480,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Get pnpm store directory
         shell: bash
@@ -678,7 +678,11 @@ jobs:
 
           # Copy binary to binaries directory
           New-Item -ItemType Directory -Force -Path "frontend/src-tauri/binaries" | Out-Null
-          Copy-Item "target/release/llama-helper.exe" -Destination "frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe"
+          if (Test-Path "target/release/llama-helper.exe") {
+            Copy-Item "target/release/llama-helper.exe" -Destination "frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe"
+          } elseif (Test-Path "target/x86_64-pc-windows-msvc/release/llama-helper.exe") {
+            Copy-Item "target/x86_64-pc-windows-msvc/release/llama-helper.exe" -Destination "frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe"
+          }
 
           Write-Host "Copied llama-helper to frontend/src-tauri/binaries/"
           Get-ChildItem "frontend/src-tauri/binaries/"
@@ -718,7 +722,7 @@ jobs:
           find target/x86_64-pc-windows-msvc/${{ steps.build-profile.outputs.profile }}/bundle -type f \( -name "*.msi" -o -name "*.exe" \) -exec ls -lh {} \;
 
       - name: Upload artifacts
-        if: ${{ github.event.inputs.upload-artifacts == 'true' }}
+        if: ${{ github.event.inputs.upload-artifacts == 'true' || github.event.inputs.upload-artifacts == '' || github.event.inputs.upload-artifacts == null }}
         uses: actions/upload-artifact@v4
         with:
           name: meetily-windows-x64-${{ steps.build-profile.outputs.profile }}-${{ steps.get-version.outputs.version }}
